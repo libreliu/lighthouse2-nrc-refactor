@@ -39,10 +39,10 @@ typedef unsigned short ushort;
 #ifndef __CUDACC__
 
 #ifdef _MSC_VER
-typedef unsigned char BYTE; // for freeimage.h
-typedef unsigned short WORD; // for freeimage.h
-typedef unsigned long DWORD; // for freeimage.h
-typedef int BOOL; // for freeimage.h
+// typedef unsigned char BYTE; // for freeimage.h
+// typedef unsigned short WORD; // for freeimage.h
+// typedef unsigned long DWORD; // for freeimage.h
+// typedef int BOOL; // for freeimage.h
 
 #define ALIGN( x ) __declspec( align( x ) )
 #else
