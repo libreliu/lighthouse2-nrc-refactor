@@ -16,7 +16,8 @@
    API.
 */
 
-#include "rendersystem.h"
+#include "system.h"
+#include "core_api_base.h"
 
 static CoreAPI_Base* api = 0;
 

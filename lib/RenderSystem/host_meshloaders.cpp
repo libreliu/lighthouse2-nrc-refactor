@@ -16,7 +16,7 @@
    release settings even when debugging.
 */
 
-#include "rendersystem.h"
+//#include "rendersystem.h"
 #define TINYGLTF_USE_RAPIDJSON
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
