@@ -17,3 +17,4 @@ target_compile_definitions(RenderCore_Optix7 PRIVATE
     _CONSOLE
 )
 set_target_properties(RenderCore_Optix7 PROPERTIES CUDA_ARCHITECTURES "75")
+target_include_directories(RenderCore_Optix7 PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
