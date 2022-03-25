@@ -68,6 +68,9 @@ void HandleInput( float frameTime )
 //  +-----------------------------------------------------------------------------+
 int main()
 {
+	// Initialize staticically linked FreeImage
+	FreeImage_Initialise(FALSE);
+
 	// initialize OpenGL
 	InitGLFW();
 	// initialize renderer
@@ -107,6 +110,9 @@ int main()
 	renderer->Shutdown();
 	glfwDestroyWindow( window );
 	glfwTerminate();
+
+	// Deinitialize staticically linked FreeImage
+	FreeImage_DeInitialise();
 	return 0;
 }
 
