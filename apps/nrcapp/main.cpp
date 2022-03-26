@@ -24,6 +24,12 @@ static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
 static bool running = true;
 static std::bitset<1024> keystates;
 
+// Dear ImGui
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
+
 #include "main_tools.h"
 
 //  +-----------------------------------------------------------------------------+
@@ -62,6 +68,35 @@ void HandleInput( float frameTime )
 	if (keystates[GLFW_KEY_RIGHT]) camera->TranslateTarget( make_float3( rot, 0, 0 ) );
 }
 
+void DrawUI() {
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	ImGui::Begin( "Render statistics", 0 );
+	ImGui::Text("dear imgui says hello. ");
+	ImGui::End();
+
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
+}
+
+void InitImGui()
+{
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	if (!ImGui::CreateContext())
+	{
+		printf( "ImGui::CreateContext failed.\n" );
+		exit( EXIT_FAILURE );
+	}
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	ImGui::StyleColorsDark(); // or ImGui::StyleColorsClassic();
+	ImGui_ImplGlfw_InitForOpenGL( window, true );
+	ImGui_ImplOpenGL3_Init( "#version 130" );
+}
+
 //  +-----------------------------------------------------------------------------+
 //  |  main                                                                       |
 //  |  Application entry point.                                             LH2'21|
@@ -73,6 +108,7 @@ int main()
 
 	// initialize OpenGL
 	InitGLFW();
+	InitImGui();
 	// initialize renderer
 	renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7NRC" );
 	renderer->DeserializeCamera( "camera.xml" );
@@ -100,6 +136,10 @@ int main()
 		shader->SetInputMatrix( "view", mat4::Identity() );
 		DrawQuad();
 		shader->Unbind();
+
+		// shader
+		DrawUI();
+
 		// finalize
 		glfwSwapBuffers( window );
 		glfwPollEvents();
@@ -108,6 +148,9 @@ int main()
 	// clean up
 	renderer->SerializeCamera( "camera.xml" );
 	renderer->Shutdown();
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
 	glfwDestroyWindow( window );
 	glfwTerminate();
 
