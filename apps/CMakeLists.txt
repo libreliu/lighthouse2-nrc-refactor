@@ -1,1 +1,2 @@
 add_subdirectory(tinyapp)
+add_subdirectory(nrcapp)
