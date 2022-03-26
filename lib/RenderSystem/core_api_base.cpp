@@ -130,4 +130,27 @@ CoreAPI_Base* CoreAPI_Base::CreateCoreAPI( const char* coreName )
 	return api;
 }
 
+// Will be override by detailed implementations
+bool CoreAPI_Base::SettingStringExt( const char* name, const char* value ) {
+	return false;
+}
+
+// Will be override by detailed implementations
+std::string CoreAPI_Base::GetSettingStringExt( const char* name ) {
+	return "";
+}
+
+// Will be override by detailed implementations
+bool CoreAPI_Base::EnableFeatureExt( const char* featureName ) {
+	return false;
+}
+
+bool CoreAPI_Base::EnableAuxTargetExt( const char* name, GLTexture *target ) {
+	return false;
+}
+
+bool CoreAPI_Base::DisableAuxTargetExt( const char* name ) {
+	return false;
+}
+
 // EOF

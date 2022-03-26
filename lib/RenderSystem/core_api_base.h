@@ -93,6 +93,16 @@ public:
 	virtual void SetTarget( GLTexture* target, const uint spp ) = 0;
 	// Setting: modify a render setting
 	virtual void Setting( const char* name, float value ) = 0;
+	// SettingStringExt: modify a render setting - defaults to no-op, true if settings affected
+	virtual bool SettingStringExt( const char* name, const char* value );
+	// GetSettingStringExt: defaults to ""
+	virtual std::string GetSettingStringExt( const char* name );
+	// EnableFeatureExt: return true if such feature exists and can be enabled - defaults to false
+	virtual bool EnableFeatureExt( const char* name );
+	// Set auxiliary target used for debugging - false by default
+	virtual bool EnableAuxTargetExt( const char* name, GLTexture *target );
+	// Disable auxiliary target used for debugging - false by default
+	virtual bool DisableAuxTargetExt( const char* name );
 	// Render: produce one frame. Convergence can be 'Converge' or 'Restart'.
 	virtual void Render( const ViewPyramid& view, const Convergence converge, bool async ) = 0;
 	// WaitForRender: wait for the asynchronous render to complete.
