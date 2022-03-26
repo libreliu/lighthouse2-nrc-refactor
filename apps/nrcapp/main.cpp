@@ -74,7 +74,7 @@ int main()
 	// initialize OpenGL
 	InitGLFW();
 	// initialize renderer
-	renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7" );	// OPTIX7 core, best for RTX devices
+	renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7NRC" );
 	renderer->DeserializeCamera( "camera.xml" );
 	// initialize scene
 	PrepareScene();
