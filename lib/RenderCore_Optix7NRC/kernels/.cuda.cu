@@ -221,6 +221,7 @@ __host__ void SetCounters( Counters* p ) { cudaMemcpyToSymbol( counters, &p, siz
 #include "bsdf.h"
 #include "pathtracer.h"
 #include "finalize_shared.h"
+#include "auxRT.h"
 
 } // namespace lh2core
 

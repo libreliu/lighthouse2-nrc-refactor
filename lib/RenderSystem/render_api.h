@@ -73,6 +73,11 @@ public:
 	void SetProbePos( const int2 pos );
 	CoreStats GetCoreStats() const;
 	SystemStats GetSystemStats();
+	bool EnableFeatureExt( const char* name );
+	bool EnableAuxTargetExt( const char* name, GLTexture *target );
+	bool DisableAuxTargetExt( const char* name );
+	std::string GetSettingStringExt( const char* name );
+	bool SettingStringExt( const char* name, const char* value );
 };
 
 } // namespace lighthouse2

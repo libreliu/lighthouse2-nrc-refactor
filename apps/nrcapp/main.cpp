@@ -16,9 +16,16 @@
 #include "platform.h"
 #include "rendersystem.h"
 #include <bitset>
+#include <memory>
+
+struct RenderTarget {
+	std::string rtName;
+	std::unique_ptr<GLTexture> texture;
+};
 
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
+static std::vector<RenderTarget> auxRenderTargets;
 static Shader* shader = 0;
 static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
 static bool running = true;

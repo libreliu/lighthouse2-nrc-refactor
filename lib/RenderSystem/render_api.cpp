@@ -242,4 +242,24 @@ SystemStats RenderAPI::GetSystemStats()
 	return renderer->GetSystemStats();
 }
 
+bool RenderAPI::EnableFeatureExt( const char* name ) {
+	return renderer->EnableFeatureExt(name);
+}
+
+bool RenderAPI::EnableAuxTargetExt( const char* name, GLTexture *target ) {
+	return renderer->EnableAuxTargetExt(name, target);
+}
+
+bool RenderAPI::DisableAuxTargetExt( const char* name ) {
+	return renderer->DisableAuxTargetExt(name);
+}
+
+std::string RenderAPI::GetSettingStringExt( const char* name ) {
+	return renderer->GetSettingStringExt(name);
+}
+
+bool RenderAPI::SettingStringExt( const char* name, const char* value ) {
+	return renderer->SettingStringExt(name, value);
+}
+
 // EOF

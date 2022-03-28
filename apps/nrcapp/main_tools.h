@@ -15,6 +15,13 @@
 
 GLFWwindow* window = 0;
 
+void disableAllAuxRT() {
+	for (auto &rt: auxRenderTargets) {
+		renderer->DisableAuxTargetExt(rt.rtName.c_str());
+	}
+	auxRenderTargets.clear();
+}
+
 //  +-----------------------------------------------------------------------------+
 //  |  ...Callback                                                                |
 //  |  Various GLFW callbacks, mostly just forwarded to AntTweakBar.        LH2'19|
@@ -28,7 +35,35 @@ void ReshapeWindowCallback( GLFWwindow* window, int w, int h )
 	renderTarget = new GLTexture( scrwidth, scrheight, GLTexture::FLOAT );
 	glViewport( 0, 0, scrwidth, scrheight );
 	renderer->SetTarget( renderTarget, 1 );
+
+	disableAllAuxRT();
+	bool auxRTEnabled = renderer->EnableFeatureExt("auxiliaryRenderTargets");
+	if (!auxRTEnabled) return;
+
+	// name1;name2;name3;...;lastname;
+	std::string auxRTCommaList = renderer->GetSettingStringExt("auxiliaryRenderTargets");
+	
+	std::vector<std::string> rtNames;
+    auto start = 0U;
+    auto end = auxRTCommaList.find(";");
+    while (end != std::string::npos) {
+        rtNames.push_back(auxRTCommaList.substr(start, end - start));
+        start = end + 1;
+        end = auxRTCommaList.find(";", start);
+    }
+
+	for (auto &rtName: rtNames) {
+		auxRenderTargets.push_back(RenderTarget{
+			rtName,
+			std::make_unique<GLTexture>(scrwidth, scrheight, GLTexture::FLOAT)
+		});
+		renderer->EnableAuxTargetExt(
+			auxRenderTargets.back().rtName.c_str(),
+			auxRenderTargets.back().texture.get()
+		);
+	}
 }
+
 void KeyEventCallback( GLFWwindow* window, int key, int scancode, int action, int mods )
 {
 	if (key == GLFW_KEY_ESCAPE) running = false;

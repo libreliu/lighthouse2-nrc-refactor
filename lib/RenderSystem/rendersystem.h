@@ -92,6 +92,21 @@ public:
 	void Shutdown();
 	CoreStats GetCoreStats() { return core ? core->GetCoreStats() : CoreStats(); }
 	SystemStats GetSystemStats() { return stats; }
+	inline bool EnableFeatureExt( const char* name ) {
+		if (core) return core->EnableFeatureExt(name); else return false;
+	}
+	inline bool EnableAuxTargetExt( const char* name, GLTexture *target ) {
+		if (core) return core->EnableAuxTargetExt(name, target); else return false;
+	}
+	inline bool DisableAuxTargetExt( const char* name ) {
+		if (core) return core->DisableAuxTargetExt(name); else return false;
+	}
+	inline std::string GetSettingStringExt( const char* name ) {
+		if (core) return core->GetSettingStringExt(name); else return "";
+	}
+	inline bool SettingStringExt( const char* name, const char* value ) {
+		if (core) return core->SettingStringExt(name, value); else return false;
+	}
 private:
 	// private methods
 	void SynchronizeSky();
