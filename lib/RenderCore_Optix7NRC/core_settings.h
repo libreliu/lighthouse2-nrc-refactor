@@ -116,7 +116,9 @@ struct Params
 	{
 		SPAWN_PRIMARY = 0,	// optix code will spawn and trace primary rays
 		SPAWN_SHADOW,		// optix code will spawn and trace shadow rays
-		SPAWN_SECONDARY		// optix code will spawn and trace extension rays
+		SPAWN_SECONDARY,		// optix code will spawn and trace extension rays
+		SPAWN_NRC_PRIMARY_UNIFORM,	// Use uniform sampler
+		SPAWN_NRC_PRIMARY_HILTON	// Use Hilton sampler
 	};
 	float4 posLensSize;
 	float3 right, up, p1;

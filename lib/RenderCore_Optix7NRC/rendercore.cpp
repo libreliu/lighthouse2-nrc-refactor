@@ -16,7 +16,7 @@
 #include "core_settings.h"
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
-
+#include <cstring>
 namespace lh2core
 {
 
@@ -29,6 +29,15 @@ void shade( const int pathCount, float4* accumulator, const uint stride,
 	const uint R0, const uint shift, const uint* blueNoise, const int pass,
 	const int probePixelIdx, const int pathLength, const int w, const int h, const float spreadAngle );
 void finalizeRender( const float4* accumulator, const int w, const int h, const int spp );
+
+// forward declaration of nrc cuda code
+void pathStateBufferVisualize(
+    const float4* pathStates, const uint numElements, const uint stride,
+    float4* debugRT, const uint w, const uint h
+);
+void writeToRenderTarget(
+	const float4* accumulator, const int w, const int h, cudaSurfaceObject_t RTsurface
+);
 
 } // namespace lh2core
 
@@ -95,7 +104,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
 {
 	printf( "[%i][%s]: %s\n", level, tag, message );
 }
-void RenderCore::CreateOptixContext( int cc )
+void RenderCore::CreateOptixContext( int cc, bool forceRecompile )
 {
 	// prepare the optix context
 	cudaFree( 0 );
@@ -114,7 +123,7 @@ void RenderCore::CreateOptixContext( int cc )
 
 	// load and compile PTX
 	string ptx;
-	if (NeedsRecompile( "../../lib/RenderCore_Optix7/optix/", ".optix.turing.cu.ptx", ".optix.cu", "../../RenderSystem/common_settings.h", "../core_settings.h" ))
+	if (forceRecompile || NeedsRecompile( "../../lib/RenderCore_Optix7/optix/", ".optix.turing.cu.ptx", ".optix.cu", "../../RenderSystem/common_settings.h", "../core_settings.h" ))
 	{
 		CUDATools::compileToPTX( ptx, TextFileRead( "../../lib/RenderCore_Optix7/optix/.optix.cu" ).c_str(), "../../lib/RenderCore_Optix7/optix", cc, 7 );
 		if (cc / 10 == 7) TextFileWrite( ptx, "../../lib/RenderCore_Optix7/optix/.optix.turing.cu.ptx" );
@@ -237,7 +246,9 @@ void RenderCore::Init()
 	memcpy( coreStats.deviceName, properties.name, strlen( properties.name ) + 1 );
 	printf( "running on GPU: %s (%i SMs, %iGB VRAM)\n", coreStats.deviceName, coreStats.SMcount, (int)(coreStats.VRAM >> 10) );
 	// initialize Optix7
-	CreateOptixContext( computeCapability );
+	CreateOptixContext( computeCapability, true );
+	// initialize NRC
+	InitNRC();
 	// render settings
 	stageClampValue( 10.0f );
 	// prepare counters for persistent threads
@@ -835,16 +846,21 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 	if (converge == Converge) firstConvergingFrame = false;
 	// do the actual rendering
 	renderTimer.reset();
-	if (async)
+	// if (async)
+	// {
+	// 	asyncRenderInProgress = true;
+	// 	renderThread->Init( this, view );
+	// 	SetEvent( startEvent );
+	// }
+	// else
+	// {
+	// 	//RenderImpl( view );
+	// 	RenderImplNRCPrimary( view );
+	// 	FinalizeRender();
+	// }
 	{
-		asyncRenderInProgress = true;
-		renderThread->Init( this, view );
-		SetEvent( startEvent );
-	}
-	else
-	{
-		RenderImpl( view );
-		FinalizeRender();
+		RenderImplNRCPrimary( view );
+		FinalizeRenderNRC();
 	}
 }
 void RenderCore::RenderImpl( const ViewPyramid& view )
@@ -1002,6 +1018,124 @@ void RenderCore::Shutdown()
 CoreStats RenderCore::GetCoreStats() const
 {
 	return coreStats;
+}
+
+// -- NRC added methods --
+
+// SettingStringExt: modify a render setting - defaults to no-op, true if settings affected
+bool RenderCore::SettingStringExt( const char* name, const char* value ) {
+	if (!strcmp(name, "clearAuxTargetInterest")) {
+		return auxRTMgr.ClearInterest(value);
+	} else if (!strcmp(name, "setAuxTargetInterest")) {
+		return auxRTMgr.SetInterest(value);
+	}
+	return false;
+}
+
+// GetSettingStringExt: defaults to ""
+std::string RenderCore::GetSettingStringExt( const char* name ) {
+	if (!strcmp(name, "auxiliaryRenderTargets")) {
+		return auxRTMgr.ListRegisteredRTs();
+	}
+
+	return "";
+}
+
+// EnableFeatureExt: return true if such feature exists and can be enabled - defaults to false
+bool RenderCore::EnableFeatureExt( const char* name ) {
+	if (!strcmp(name, "auxiliaryRenderTargets")) {
+		auxRTenabled = true;
+		return true;
+	}
+
+	return false;
+}
+
+// Set auxiliary target used for debugging - false by default
+bool RenderCore::EnableAuxTargetExt( const char* name, GLTexture *target ) {
+	return auxRTMgr.SetupTexture(name, target);
+}
+
+// Disable auxiliary target used for debugging - false by default
+bool RenderCore::DisableAuxTargetExt( const char* name ) {
+	return auxRTMgr.DisableRT(name);
+}
+
+void RenderCore::InitNRC() {
+	// device side params used by NRC
+	CHK_CUDA(cudaMalloc((void**)(&nrcParamsPrimary), sizeof(Params)));
+	CHK_CUDA(cudaMalloc((void**)(&nrcParamsSecondary), sizeof(Params)));
+	CHK_CUDA(cudaMalloc((void**)(&nrcParamsShadow), sizeof(Params)));
+
+	auxRTMgr.RegisterRT("trainPrimaryRay");
+}
+
+void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
+	// update acceleration structure
+	UpdateToplevel();
+
+	// 1. Primary with Sobel 2D sampling for screen output
+	RandomUInt( shiftSeed );
+	coreStats.totalExtensionRays = coreStats.totalShadowRays = 0;
+	float3 right = view.p2 - view.p1, up = view.p3 - view.p1;
+	params.posLensSize = make_float4( view.pos.x, view.pos.y, view.pos.z, view.aperture );
+	params.distortion = view.distortion;
+	params.shift = shiftSeed;
+	params.right = make_float3( right.x, right.y, right.z );
+	params.up = make_float3( up.x, up.y, up.z );
+	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
+	params.pass = samplesTaken;
+	params.bvhRoot = bvhRoot;
+
+	if (nrcTrainingRaysSampler == UNIFORM) {
+		params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
+	} else if (nrcTrainingRaysSampler == HILTON) {
+		params.phase = Params::SPAWN_NRC_PRIMARY_HILTON;
+	}
+
+	assert(nrcNumInitialTrainingRays <= params.scrsize.x * params.scrsize.y * params.scrsize.z);
+	cudaMemcpyAsync( (void*)nrcParamsPrimary, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, nrcNumInitialTrainingRays, 1, 1 ) );
+	
+	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("trainPrimaryRay");
+		pathStateBufferVisualize(
+			pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+			params.scrsize.x * params.scrsize.y * params.scrsize.z,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
+		);
+	}
+	
+
+	// 2. Learn from primary
+
+	// 2.x validation
+}
+
+void RenderCore::FinalizeRenderNRC()
+{
+	// present accumulator to final buffer
+	renderTarget.BindSurface();
+	samplesTaken += scrspp;
+	finalizeRender( accumulator->DevPtr(), scrwidth, scrheight, samplesTaken );
+	renderTarget.UnbindSurface();
+
+	// auxiliary rt mgmt
+	std::vector<std::string> activeRTNames;
+	for (auto &rt: auxRTMgr) {
+		if (rt.second.interested && rt.second.linked) {
+			activeRTNames.push_back(rt.first);
+		}
+	}
+
+	for (auto &rtName: activeRTNames) {
+		auto surfObj = auxRTMgr.BindSurface(rtName);
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer(rtName);
+		writeToRenderTarget(
+			rtBufPtr->DevPtr(), scrwidth, scrheight, surfObj
+		);
+		auxRTMgr.UnbindSurface(rtName);
+	}
 }
 
 // EOF

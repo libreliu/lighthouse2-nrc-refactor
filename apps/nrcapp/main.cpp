@@ -23,6 +23,9 @@ struct RenderTarget {
 	std::unique_ptr<GLTexture> texture;
 };
 
+std::string currentRT;
+bool auxRTEnabled;
+
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
 static std::vector<RenderTarget> auxRenderTargets;
@@ -80,8 +83,24 @@ void DrawUI() {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::Begin( "Render statistics", 0 );
-	ImGui::Text("dear imgui says hello. ");
+	ImGui::Begin( "Rendertarget Switch", 0 );
+
+	std::string hint = "CurrentRT: " + currentRT;
+	ImGui::Text(hint.c_str());
+	if (ImGui::Button("result")) {
+		currentRT = "result";
+	} else {
+		for (auto &rt: auxRenderTargets) {
+			if (ImGui::Button(rt.rtName.c_str())) {
+				if (currentRT != "result") {
+					renderer->SettingStringExt("clearAuxTargetInterest", currentRT.c_str());
+				}
+				currentRT = rt.rtName;
+				renderer->SettingStringExt("setAuxTargetInterest", currentRT.c_str());
+			}
+		}
+	}
+
 	ImGui::End();
 
 	ImGui::Render();
@@ -104,6 +123,13 @@ void InitImGui()
 	ImGui_ImplOpenGL3_Init( "#version 130" );
 }
 
+void InitAuxRT() {
+	currentRT = "result";
+
+	auxRTEnabled = renderer->EnableFeatureExt("auxiliaryRenderTargets");
+	if (!auxRTEnabled) return;
+}
+
 //  +-----------------------------------------------------------------------------+
 //  |  main                                                                       |
 //  |  Application entry point.                                             LH2'21|
@@ -119,6 +145,8 @@ int main()
 	// initialize renderer
 	renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7NRC" );
 	renderer->DeserializeCamera( "camera.xml" );
+	// initialize auxiliary rendertargets
+	InitAuxRT();
 	// initialize scene
 	PrepareScene();
 	// set initial window size
@@ -137,9 +165,19 @@ int main()
 		mat4 M = mat4::RotateY( r * 2.0f ) * mat4::RotateZ( 0.2f * sinf( r * 8.0f ) ) * mat4::Translate( make_float3( 0, 5, 0 ) );
 		renderer->SetNodeTransform( car, M );
 		if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
+		
 		// finalize and present
 		shader->Bind();
-		shader->SetInputTexture( 0, "color", renderTarget );
+		
+		if (currentRT == "result") {
+			shader->SetInputTexture( 0, "color", renderTarget );
+		} else {
+			for (auto &auxRT: auxRenderTargets) {
+				if (auxRT.rtName == currentRT) {
+					shader->SetInputTexture(0, "color", auxRT.texture.get());
+				}
+			}
+		}
 		shader->SetInputMatrix( "view", mat4::Identity() );
 		DrawQuad();
 		shader->Unbind();
@@ -153,6 +191,7 @@ int main()
 		if (!running) break; // esc was pressed
 	}
 	// clean up
+	disableAllAuxRT();
 	renderer->SerializeCamera( "camera.xml" );
 	renderer->Shutdown();
 	ImGui_ImplOpenGL3_Shutdown();

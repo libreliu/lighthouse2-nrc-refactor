@@ -153,16 +153,44 @@ __device__ void generateShadowRay( const uint rayIdx, const uint stride )
 	if (pixelIdx < stride /* OptiX bug workaround? */) params.accumulator[pixelIdx] += make_float4( E4.x, E4.y, E4.z, 1 );
 }
 
+__device__ void setupNRCPrimaryRayUniform( const uint pathIdx, const uint stride )
+{
+	const float xf = RandomFloat(pathIdx) * params.scrsize.x;
+	const float yf = RandomFloat(pathIdx) * params.scrsize.y;
+
+	//const uint pixelIdx = pathIdx % (params.scrsize.x * params.scrsize.y);
+	const uint pixelIdx = __float2uint_rz(xf) + __float2uint_rz(yf) * params.scrsize.x;
+
+	const uint sampleIdx = pathIdx / (params.scrsize.x * params.scrsize.y) + params.pass;
+	uint seed = WangHash( pathIdx * 16789 + params.pass * 1791 );
+	// generate eye ray
+	float3 O, D;
+	generateEyeRay( O, D, pixelIdx, sampleIdx, seed );
+	// populate path state array
+	params.pathStates[pathIdx] = make_float4( O, __uint_as_float( (pixelIdx << 6) + 1 /* S_SPECULAR in CUDA code */ ) );
+	params.pathStates[pathIdx + stride] = make_float4( D, 0 );
+	// trace eye ray
+	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
+	optixTrace( params.bvhRoot, O, D, params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
+		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
+	if (pixelIdx < stride /* OptiX bug workaround? */) if (u2 != 0xffffffff) /* bandwidth reduction */
+		params.hitData[pathIdx] = make_float4( __uint_as_float( u0 ), __uint_as_float( u1 ), __uint_as_float( u2 ), __uint_as_float( u3 ) );
+}
+
 extern "C" __global__ void __raygen__rg()
 {
 	const uint stride = params.scrsize.x * params.scrsize.y * params.scrsize.z;
 	const uint3 idx = optixGetLaunchIndex();
 	const uint rayIdx = idx.x + idx.y * params.scrsize.x;
+
+	// For training rays we use one dimension only when spawn
+	const uint trainRayIdx = idx.x;
 	switch (params.phase)
 	{
 	case Params::SPAWN_PRIMARY: /* primary rays */ setupPrimaryRay( rayIdx, stride ); break;
 	case Params::SPAWN_SECONDARY: /* secondary rays */ setupSecondaryRay( rayIdx, stride ); break;
 	case Params::SPAWN_SHADOW: /* shadow rays */ generateShadowRay( rayIdx, stride ); break;
+	case Params::SPAWN_NRC_PRIMARY_UNIFORM: setupNRCPrimaryRayUniform(trainRayIdx, stride); break;
 	}
 }
 

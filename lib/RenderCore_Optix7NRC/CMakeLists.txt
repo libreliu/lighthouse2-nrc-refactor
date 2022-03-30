@@ -4,7 +4,6 @@ add_library(RenderCore_Optix7NRC SHARED
     "core_mesh.cpp"
     "rendercore.cpp"
     "../CUDA/shared_host_code/interoptexture.cpp"
-    "AuxRTMgr.cpp"
 )
 
 target_link_libraries(RenderCore_Optix7NRC CUDA-Shared Optix7-Hdrs Shared-BSDF platform RenderSystem)

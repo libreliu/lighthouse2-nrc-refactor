@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "AuxRTMgr.h"
+
 namespace lh2core
 {
 
@@ -64,6 +66,19 @@ public:
 	void FinalizeInstances();
 	void SetProbePos( const int2 pos );
 	CoreStats GetCoreStats() const override;
+
+	// Extension methods
+	// SettingStringExt: modify a render setting - defaults to no-op, true if settings affected
+	bool SettingStringExt( const char* name, const char* value ) override;
+	// GetSettingStringExt: defaults to ""
+	std::string GetSettingStringExt( const char* name ) override;
+	// EnableFeatureExt: return true if such feature exists and can be enabled - defaults to false
+	bool EnableFeatureExt( const char* name ) override;
+	// Set auxiliary target used for debugging - false by default
+	bool EnableAuxTargetExt( const char* name, GLTexture *target ) override;
+	// Disable auxiliary target used for debugging - false by default
+	bool DisableAuxTargetExt( const char* name ) override;
+
 	// internal methods
 private:
 	void RenderImpl( const ViewPyramid& view );
@@ -74,7 +89,7 @@ private:
 	void UpdateLightTreeNormals( const int node );
 	void UpdateLightTree();
 	void SyncStorageType( const TexelStorage storage );
-	void CreateOptixContext( int cc );
+	void CreateOptixContext( int cc, bool forceRecompile );
 	// helpers
 	template <class T> CUDAMaterial::Map Map( T v )
 	{
@@ -137,6 +152,21 @@ private:
 	cudaEvent_t traceStart[MAXPATHLENGTH], traceEnd[MAXPATHLENGTH];
 	cudaEvent_t shadeStart[MAXPATHLENGTH], shadeEnd[MAXPATHLENGTH];
 	cudaEvent_t shadowStart, shadowEnd;
+
+	// == NRC Added ==
+	uint nrcNumInitialTrainingRays = 10;
+	bool auxRTenabled = false;
+	enum {
+		UNIFORM,
+		HILTON
+	} nrcTrainingRaysSampler;
+	AuxRTMgr auxRTMgr;
+	CUdeviceptr nrcParamsPrimary, nrcParamsSecondary, nrcParamsShadow;
+
+	void InitNRC();
+	void RenderImplNRCPrimary(const ViewPyramid &view);
+	void FinalizeRenderNRC();
+
 protected:
 	// events
 	HANDLE startEvent, doneEvent;

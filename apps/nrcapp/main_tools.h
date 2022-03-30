@@ -36,20 +36,19 @@ void ReshapeWindowCallback( GLFWwindow* window, int w, int h )
 	glViewport( 0, 0, scrwidth, scrheight );
 	renderer->SetTarget( renderTarget, 1 );
 
-	disableAllAuxRT();
-	bool auxRTEnabled = renderer->EnableFeatureExt("auxiliaryRenderTargets");
 	if (!auxRTEnabled) return;
+	disableAllAuxRT();
 
 	// name1;name2;name3;...;lastname;
-	std::string auxRTCommaList = renderer->GetSettingStringExt("auxiliaryRenderTargets");
+	std::string auxRTSemiColonList = renderer->GetSettingStringExt("auxiliaryRenderTargets");
 	
 	std::vector<std::string> rtNames;
-    auto start = 0U;
-    auto end = auxRTCommaList.find(";");
+    size_t start = 0U;
+    auto end = auxRTSemiColonList.find(";");
     while (end != std::string::npos) {
-        rtNames.push_back(auxRTCommaList.substr(start, end - start));
+        rtNames.push_back(auxRTSemiColonList.substr(start, end - start));
         start = end + 1;
-        end = auxRTCommaList.find(";", start);
+        end = auxRTSemiColonList.find(";", start);
     }
 
 	for (auto &rtName: rtNames) {
