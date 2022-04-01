@@ -2,7 +2,7 @@ __global__ void pathStateBufferVisualizeKernel(
     const float4* pathStates, const uint numElements, const uint stride,
     float4* debugRT, const uint w, const uint h
 ) {
-    const uint jobIndex = blockIdx.x + blockIdx.y * blockDim.x;
+    const uint jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
     if (jobIndex >= numElements) {
         return;
     }
@@ -27,8 +27,27 @@ __host__ void pathStateBufferVisualize(
     const float4* pathStates, const uint numElements, const uint stride,
     float4* debugRT, const uint w, const uint h
 ) {
-	const dim3 gridDim( NEXTMULTIPLEOF( w, 32 ) / 32, NEXTMULTIPLEOF( h, 8 ) / 8 ), blockDim( 32, 8 );
-	pathStateBufferVisualizeKernel <<< gridDim, blockDim >>> (
+	const dim3 gridDim( NEXTMULTIPLEOF( numElements, 128 ) / 128, 1 );
+	pathStateBufferVisualizeKernel <<< gridDim, 128 >>> (
         pathStates, numElements, stride, debugRT, w, h
+    );
+}
+
+__global__ void debugRTVisualizeKernel(
+    float4* debugRT, const uint w, const uint h
+) {
+	const int x = threadIdx.x + blockIdx.x * blockDim.x;
+	const int y = threadIdx.y + blockIdx.y * blockDim.y;
+	if ((x >= w) || (y >= h)) return;
+
+    debugRT[x + y * w] = make_float4(((x + y) & 0xFF) / 256.0f);
+}
+
+__host__ void debugRTVisualize(
+    float4* debugRT, const uint w, const uint h
+) {
+	const dim3 gridDim( NEXTMULTIPLEOF( w, 32 ) / 32, NEXTMULTIPLEOF( h, 8 ) / 8 ), blockDim( 32, 8 );
+	debugRTVisualizeKernel <<< gridDim, blockDim >>> (
+        debugRT, w, h
     );
 }

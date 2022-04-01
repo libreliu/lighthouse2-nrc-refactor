@@ -35,6 +35,9 @@ void pathStateBufferVisualize(
     const float4* pathStates, const uint numElements, const uint stride,
     float4* debugRT, const uint w, const uint h
 );
+void debugRTVisualize(
+    float4* debugRT, const uint w, const uint h
+);
 void writeToRenderTarget(
 	const float4* accumulator, const int w, const int h, cudaSurfaceObject_t RTsurface
 );
@@ -1068,6 +1071,7 @@ void RenderCore::InitNRC() {
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsShadow), sizeof(Params)));
 
 	auxRTMgr.RegisterRT("trainPrimaryRay");
+	auxRTMgr.RegisterRT("debugRTVisualize");
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
@@ -1110,6 +1114,13 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	// 2. Learn from primary
 
 	// 2.x validation
+
+	if (auxRTMgr.isSetupAndInterested("debugRTVisualize")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("debugRTVisualize");
+		debugRTVisualize(
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
+		);
+	}
 }
 
 void RenderCore::FinalizeRenderNRC()

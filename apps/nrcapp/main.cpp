@@ -172,11 +172,15 @@ int main()
 		if (currentRT == "result") {
 			shader->SetInputTexture( 0, "color", renderTarget );
 		} else {
+			bool rtFound = false;
 			for (auto &auxRT: auxRenderTargets) {
 				if (auxRT.rtName == currentRT) {
 					shader->SetInputTexture(0, "color", auxRT.texture.get());
+					rtFound = true;
+					break;
 				}
 			}
+			assert(rtFound);
 		}
 		shader->SetInputMatrix( "view", mat4::Identity() );
 		DrawQuad();

@@ -1,5 +1,5 @@
 __global__ void writeToRenderTargetKernel(
-	const float4* accumulator, const int scrwidth, const int scrheight, cudaSurfaceObject_t RTSurface
+	const float4* accumulator, const int scrwidth, const int scrheight, cudaSurfaceObject_t surfObj
 ) {
 	// get x and y for pixel
 	const int x = threadIdx.x + blockIdx.x * blockDim.x;
@@ -7,7 +7,8 @@ __global__ void writeToRenderTargetKernel(
 	if ((x >= scrwidth) || (y >= scrheight)) return;
 	// plot scaled pixel
 	float4 value = accumulator[x + y * scrwidth];
-	surf2Dwrite<float4>( value, renderTarget, x * sizeof( float4 ), y, cudaBoundaryModeClamp );
+	// float4 value = make_float4(1.0f);
+	surf2Dwrite( value, surfObj, x * sizeof( float4 ), y, cudaBoundaryModeClamp );
 }
 
 __host__ void writeToRenderTarget(
