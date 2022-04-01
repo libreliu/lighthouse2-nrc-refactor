@@ -33,7 +33,7 @@ void finalizeRender( const float4* accumulator, const int w, const int h, const 
 // forward declaration of nrc cuda code
 void pathStateBufferVisualize(
     const float4* pathStates, const uint numElements, const uint stride,
-    float4* debugRT, const uint w, const uint h
+    const float4* hitData, float4* debugRT, const uint w, const uint h
 );
 void debugRTVisualize(
     float4* debugRT, const uint w, const uint h
@@ -126,20 +126,20 @@ void RenderCore::CreateOptixContext( int cc, bool forceRecompile )
 
 	// load and compile PTX
 	string ptx;
-	if (forceRecompile || NeedsRecompile( "../../lib/RenderCore_Optix7/optix/", ".optix.turing.cu.ptx", ".optix.cu", "../../RenderSystem/common_settings.h", "../core_settings.h" ))
+	if (forceRecompile || NeedsRecompile( "../../lib/RenderCore_Optix7NRC/optix/", ".optix.turing.cu.ptx", ".optix.cu", "../../RenderSystem/common_settings.h", "../core_settings.h" ))
 	{
-		CUDATools::compileToPTX( ptx, TextFileRead( "../../lib/RenderCore_Optix7/optix/.optix.cu" ).c_str(), "../../lib/RenderCore_Optix7/optix", cc, 7 );
-		if (cc / 10 == 7) TextFileWrite( ptx, "../../lib/RenderCore_Optix7/optix/.optix.turing.cu.ptx" );
-		else if (cc / 10 == 6) TextFileWrite( ptx, "../../lib/RenderCore_Optix7/optix/.optix.pascal.cu.ptx" );
-		else if (cc / 10 == 5) TextFileWrite( ptx, "../../lib/RenderCore_Optix7/optix/.optix.maxwell.cu.ptx" );
+		CUDATools::compileToPTX( ptx, TextFileRead( "../../lib/RenderCore_Optix7NRC/optix/.optix.cu" ).c_str(), "../../lib/RenderCore_Optix7NRC/optix", cc, 7 );
+		if (cc / 10 == 7) TextFileWrite( ptx, "../../lib/RenderCore_Optix7NRC/optix/.optix.turing.cu.ptx" );
+		else if (cc / 10 == 6) TextFileWrite( ptx, "../../lib/RenderCore_Optix7NRC/optix/.optix.pascal.cu.ptx" );
+		else if (cc / 10 == 5) TextFileWrite( ptx, "../../lib/RenderCore_Optix7NRC/optix/.optix.maxwell.cu.ptx" );
 		printf( "recompiled .optix.cu.\n" );
 	}
 	else
 	{
 		const char* file = NULL;
-		if (cc / 10 == 7) file = "../../lib/RenderCore_Optix7/optix/.optix.turing.cu.ptx";
-		else if (cc / 10 == 6) file = "../../lib/RenderCore_Optix7/optix/.optix.pascal.cu.ptx";
-		else if (cc / 10 == 5) file = "../../lib/RenderCore_Optix7/optix/.optix.maxwell.cu.ptx";
+		if (cc / 10 == 7) file = "../../lib/RenderCore_Optix7NRC/optix/.optix.turing.cu.ptx";
+		else if (cc / 10 == 6) file = "../../lib/RenderCore_Optix7NRC/optix/.optix.pascal.cu.ptx";
+		else if (cc / 10 == 5) file = "../../lib/RenderCore_Optix7NRC/optix/.optix.maxwell.cu.ptx";
 		FILE* f;
 	#ifdef _MSC_VER
 		fopen_s( &f, file, "rb" );
@@ -1031,6 +1031,13 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		return auxRTMgr.ClearInterest(value);
 	} else if (!strcmp(name, "setAuxTargetInterest")) {
 		return auxRTMgr.SetInterest(value);
+	} else if (!strcmp(name, "clearAuxTargetAccumulative")) {
+		return auxRTMgr.ClearAccumulative(value);
+	} else if (!strcmp(name, "setAuxTargetAccumulative")) {
+		return auxRTMgr.SetAccumulative(value);
+	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
+		nrcNumInitialTrainingRays = std::atoi(value);
+		return true;
 	}
 	return false;
 }
@@ -1039,6 +1046,8 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 std::string RenderCore::GetSettingStringExt( const char* name ) {
 	if (!strcmp(name, "auxiliaryRenderTargets")) {
 		return auxRTMgr.ListRegisteredRTs();
+	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
+		return std::to_string(nrcNumInitialTrainingRays);
 	}
 
 	return "";
@@ -1104,9 +1113,9 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("trainPrimaryRay");
 		pathStateBufferVisualize(
-			pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
-			params.scrsize.x * params.scrsize.y * params.scrsize.z,
-			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
+		  	pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+		  	params.scrsize.x * params.scrsize.y * params.scrsize.z,
+		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
 		);
 	}
 	
@@ -1141,7 +1150,7 @@ void RenderCore::FinalizeRenderNRC()
 
 	for (auto &rtName: activeRTNames) {
 		auto surfObj = auxRTMgr.BindSurface(rtName);
-		auto rtBufPtr = auxRTMgr.getAssociatedBuffer(rtName);
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer(rtName, false);
 		writeToRenderTarget(
 			rtBufPtr->DevPtr(), scrwidth, scrheight, surfObj
 		);

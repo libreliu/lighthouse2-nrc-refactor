@@ -21,10 +21,12 @@
 struct RenderTarget {
 	std::string rtName;
 	std::unique_ptr<GLTexture> texture;
+	bool accumulative;
 };
 
 std::string currentRT;
 bool auxRTEnabled;
+int nrcNumInitialTrainingRays = 1;
 
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
@@ -83,14 +85,16 @@ void DrawUI() {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::Begin( "Rendertarget Switch", 0 );
+	ImGui::Begin("NRC ExtSetting", 0);
 
 	std::string hint = "CurrentRT: " + currentRT;
 	ImGui::Text(hint.c_str());
 	if (ImGui::Button("result")) {
 		currentRT = "result";
 	} else {
-		for (auto &rt: auxRenderTargets) {
+		for (size_t i = 0; i < auxRenderTargets.size(); i++) {
+			auto &rt = auxRenderTargets[i];
+			ImGui::PushID(i);
 			if (ImGui::Button(rt.rtName.c_str())) {
 				if (currentRT != "result") {
 					renderer->SettingStringExt("clearAuxTargetInterest", currentRT.c_str());
@@ -98,7 +102,31 @@ void DrawUI() {
 				currentRT = rt.rtName;
 				renderer->SettingStringExt("setAuxTargetInterest", currentRT.c_str());
 			}
+			ImGui::SameLine();
+			if (ImGui::Button(rt.accumulative ? "UnAccu" : "Accu")) {
+				if (rt.accumulative)
+					renderer->SettingStringExt("clearAuxTargetAccumulative", rt.rtName.c_str());
+				else
+					renderer->SettingStringExt("setAuxTargetAccumulative", rt.rtName.c_str());
+				
+				rt.accumulative = !rt.accumulative;
+			}
+			ImGui::PopID();
 		}
+	}
+
+	ImGui::Separator();
+	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
+		// value changed, notify
+		if (nrcNumInitialTrainingRays < 1) {
+			nrcNumInitialTrainingRays = 1;
+		}
+
+		if (nrcNumInitialTrainingRays > scrwidth * scrheight) {
+			nrcNumInitialTrainingRays = scrwidth * scrheight;
+		}
+		std::string rayStr = std::to_string(nrcNumInitialTrainingRays);
+		renderer->SettingStringExt("nrcNumInitialTrainingRays", rayStr.c_str());
 	}
 
 	ImGui::End();
@@ -125,6 +153,9 @@ void InitImGui()
 
 void InitAuxRT() {
 	currentRT = "result";
+
+	string numRays = renderer->GetSettingStringExt("nrcNumInitialTrainingRays");
+	nrcNumInitialTrainingRays = std::atoi(numRays.c_str());
 
 	auxRTEnabled = renderer->EnableFeatureExt("auxiliaryRenderTargets");
 	if (!auxRTEnabled) return;

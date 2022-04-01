@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <cassert>
+#include <optional>
 #include "shared_host_code/cudatools.h"
 
 // This class uses the SOTA Surface Object API
@@ -16,13 +17,14 @@ private:
         bool interested;
         bool linked;
         bool bound;
+        bool accumulative;
         GLTexture *texture;
         cudaGraphicsResource_t res;
         cudaSurfaceObject_t surfObj;
         // Deal with async; TODO: kill this
         std::shared_ptr<CoreBuffer<float4>> rtBuffer;
         inline AuxRT(bool l, bool b) : 
-            linked(l), bound(b), texture(nullptr), interested(false) {}
+            linked(l), bound(b), texture(nullptr), interested(false), accumulative(false) {}
         inline AuxRT() : linked(false), bound(false), texture(nullptr), interested(false) {}
     };
     std::map<std::string, AuxRT> auxRTs;
@@ -50,6 +52,7 @@ public:
         }
 
         it->second.interested = true;
+        return true;
     }
 
     inline bool ClearInterest(const std::string &name) {
@@ -59,6 +62,27 @@ public:
         }
 
         it->second.interested = false;
+        return true;
+    }
+
+    inline bool SetAccumulative(const std::string &name) {
+        auto it = auxRTs.find(name);
+        if (it == auxRTs.end()) {
+            return false;
+        }
+
+        it->second.accumulative = true;
+        return true;
+    }
+
+    inline bool ClearAccumulative(const std::string &name) {
+        auto it = auxRTs.find(name);
+        if (it == auxRTs.end()) {
+            return false;
+        }
+
+        it->second.accumulative = false;
+        return true;
     }
 
     inline bool isInterested(const std::string &name) {
@@ -74,13 +98,17 @@ public:
         return isInterested(name) && isSetup(name);
     }
 
-    inline CoreBuffer<float4>* getAssociatedBuffer(const std::string &name) {
+    inline CoreBuffer<float4>* getAssociatedBuffer(const std::string &name, std::optional<bool> clear = std::nullopt) {
         auto it = auxRTs.find(name);
         if (it == auxRTs.end()) {
             return nullptr;
         }
 
-        return it->second.rtBuffer.get();
+        auto buf = it->second.rtBuffer.get();
+        if (clear.value_or(!it->second.accumulative)) {
+            buf->Clear(ON_DEVICE);
+        }
+        return buf;
     }
 
     std::map<std::string, AuxRT>::const_iterator begin() {

@@ -54,12 +54,14 @@ void ReshapeWindowCallback( GLFWwindow* window, int w, int h )
 	for (auto &rtName: rtNames) {
 		auxRenderTargets.push_back(RenderTarget{
 			rtName,
-			std::make_unique<GLTexture>(scrwidth, scrheight, GLTexture::FLOAT)
+			std::make_unique<GLTexture>(scrwidth, scrheight, GLTexture::FLOAT),
+			false
 		});
 		renderer->EnableAuxTargetExt(
 			auxRenderTargets.back().rtName.c_str(),
 			auxRenderTargets.back().texture.get()
 		);
+		renderer->SettingStringExt("clearAuxTargetAccumulative", auxRenderTargets.back().rtName.c_str());
 	}
 }
 

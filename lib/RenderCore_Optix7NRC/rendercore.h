@@ -159,7 +159,7 @@ private:
 	enum {
 		UNIFORM,
 		HILTON
-	} nrcTrainingRaysSampler;
+	} nrcTrainingRaysSampler = UNIFORM;
 	AuxRTMgr auxRTMgr;
 	CUdeviceptr nrcParamsPrimary, nrcParamsSecondary, nrcParamsShadow;
 

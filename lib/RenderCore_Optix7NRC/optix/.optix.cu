@@ -155,11 +155,13 @@ __device__ void generateShadowRay( const uint rayIdx, const uint stride )
 
 __device__ void setupNRCPrimaryRayUniform( const uint pathIdx, const uint stride )
 {
-	const float xf = RandomFloat(pathIdx) * params.scrsize.x;
-	const float yf = RandomFloat(pathIdx) * params.scrsize.y;
-
+	uint pixSeed = pathIdx * 34567 + params.shift; 
+	const float xf = RandomFloat(pixSeed) * params.scrsize.x;
+	const float yf = RandomFloat(pixSeed) * params.scrsize.y;
+	
 	//const uint pixelIdx = pathIdx % (params.scrsize.x * params.scrsize.y);
 	const uint pixelIdx = __float2uint_rz(xf) + __float2uint_rz(yf) * params.scrsize.x;
+	// printf("%d: %f %f %d (stride=%d)\n", pathIdx, xf, yf, pixelIdx, stride);
 
 	const uint sampleIdx = pathIdx / (params.scrsize.x * params.scrsize.y) + params.pass;
 	uint seed = WangHash( pathIdx * 16789 + params.pass * 1791 );
