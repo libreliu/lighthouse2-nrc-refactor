@@ -22,7 +22,10 @@ target_include_directories(RenderCore_Optix7 PUBLIC
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
     ${CMAKE_CURRENT_SOURCE_DIR}    
 )
-set_property(TARGET RenderCore_Optix7 PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/coredlls/>)
+set_property(
+    TARGET RenderCore_Optix7
+    PROPERTY RUNTIME_OUTPUT_DIRECTORY $<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/coredlls/debug,${CMAKE_SOURCE_DIR}/coredlls/release>>
+)
 
-# Use this if you want runtime compilation
-target_link_libraries(RenderCore_Optix7 nvrtc cudart_static)
+# Use nvrtc if you want runtime compilation
+target_link_libraries(RenderCore_Optix7 CUDA::nvrtc CUDA::cudart_static)

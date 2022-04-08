@@ -131,6 +131,22 @@ void DrawUI() {
 
 	ImGui::End();
 
+	ImGui::Begin( "Camera parameters", 0 );
+	float3 camPos = renderer->GetCamera()->transform.GetTranslation();
+	float3 camDir = renderer->GetCamera()->transform.GetForward();
+	ImGui::Text( "position: %5.2f, %5.2f, %5.2f", camPos.x, camPos.y, camPos.z );
+	ImGui::Text( "viewdir:  %5.2f, %5.2f, %5.2f", camDir.x, camDir.y, camDir.z );
+	ImGui::SliderFloat( "FOV", &renderer->GetCamera()->FOV, 10, 90 );
+	ImGui::SliderFloat( "aperture", &renderer->GetCamera()->aperture, 0, 0.025f );
+	ImGui::SliderFloat( "distortion", &renderer->GetCamera()->distortion, 0, 0.5f );
+	ImGui::SliderFloat( "focalDistance", &renderer->GetCamera()->focalDistance, 0, 100.0f );
+	ImGui::SliderFloat( "aspectRatio", &renderer->GetCamera()->aspectRatio, 0.1f, 10.0f );
+	ImGui::Combo( "tonemap", &renderer->GetCamera()->tonemapper, "clamp\0reinhard\0reinhard ext\0reinhard lum\0reinhard jodie\0uncharted2\0\0" );
+	ImGui::SliderFloat( "brightness", &renderer->GetCamera()->brightness, 0, 0.5f );
+	ImGui::SliderFloat( "contrast", &renderer->GetCamera()->contrast, 0, 0.5f );
+	ImGui::SliderFloat( "gamma", &renderer->GetCamera()->gamma, 1, 2.5f );
+	ImGui::End();
+
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
 }
@@ -175,6 +191,7 @@ int main()
 	InitImGui();
 	// initialize renderer
 	renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7NRC" );
+	// renderer = RenderAPI::CreateRenderAPI( "RenderCore_Optix7" );
 	renderer->DeserializeCamera( "camera.xml" );
 	// initialize auxiliary rendertargets
 	InitAuxRT();

@@ -55,3 +55,97 @@ __host__ void debugRTVisualize(
         debugRT, w, h
     );
 }
+
+// InputObjBasePtr, Seqno, WorldPos, Color
+template <typename ...BaseArgPtrs>
+using WorldPointIterator = bool (*)(uint, float3&, float3&, const BaseArgPtrs...);
+
+template<auto iterOp, int extraSpan = 0, typename ...BaseArgPtrs>
+__global__ void worldPosVisualizeKernel(
+    uint numElements, float4* debugRT, const uint w, const uint h,
+    // -- camera properties --
+    // TODO: inv distortion
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion,
+    const BaseArgPtrs... argPtrs
+) {
+    const uint jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+    if (jobIndex >= numElements) {
+        return;
+    }
+
+    float3 worldPos, color;
+    bool valid = iterOp(jobIndex, worldPos, color, argPtrs...);
+    if (!valid) return;
+
+    const float3 p1p2 = viewP2 - viewP1, p3p1 = viewP1 - viewP3;
+    const float3 f = ((viewP3 - viewPos) + (viewP2 - viewPos)) * 0.5f;
+    const float rl12 = 1.0f / length(p1p2), rl31 = 1.0f / length(p3p1), rlf = 1.0f / length(f);
+    const float3 x = p1p2 * rl12, y = p3p1 * rl31, z = f * rlf;
+    float3 dir = worldPos - viewPos;
+    dir = make_float3( dot( dir, x ), dot( dir, y ), dot( dir, z ) );
+    if (dir.z < 0) return;
+    dir /= dir.z * rlf;
+    float tx = dir.x * rl12, ty = -dir.y * rl31;
+    
+    // TODO: check distortion
+    const int2 pixelPos = make_int2( (tx + 0.5f) * w, (ty + 0.5f) * h );
+    if (pixelPos.x >= 0 && pixelPos.x < w && pixelPos.y >= 0 && pixelPos.y < h)
+        debugRT[pixelPos.x + pixelPos.y * w] = make_float4(color, 0.0f);
+}
+
+template<auto iterOp, int extraSpan = 0, typename ...BaseArgPtrs>
+__host__ void worldPosVisualize(
+    uint numElements, float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion,
+    const BaseArgPtrs... argPtrs
+) {
+    const dim3 gridDim( NEXTMULTIPLEOF( numElements, 128 ) / 128, 1 );
+    worldPosVisualizeKernel<iterOp, extraSpan, BaseArgPtrs...> <<< gridDim, 128 >>> (
+        numElements, debugRT, w, h, viewP1, viewP2, viewP3, viewPos, distortion, argPtrs...
+    );
+}
+
+__device__ bool pathStateIntersectionIterator(
+    uint jobIndex, float3& worldPos, float3& color,
+    const float4* pathStates, const float4* hitData, const uint stride
+) {
+    const uint pixelIdx = __float_as_uint(pathStates[jobIndex].w) >> 6;
+    const float3 rayOrigin = make_float3(
+        pathStates[jobIndex].x,
+        pathStates[jobIndex].y,
+        pathStates[jobIndex].z
+    );
+    const float3 rayDirection = make_float3(
+        pathStates[jobIndex + stride].x,
+        pathStates[jobIndex + stride].y,
+        pathStates[jobIndex + stride].z
+    );
+
+    const float4 hitEntry = hitData[jobIndex];
+    const uint primIdx = __float_as_uint(hitEntry.z);
+    const uint instIdx = __float_as_uint(hitEntry.y);
+    const float tmin = hitEntry.w;
+
+    if (!isfinite(tmin)) {
+        return false;
+    }
+
+    worldPos = rayOrigin + rayDirection * tmin;
+    color = make_float3(tmin - std::floor(tmin));
+    return true;
+}
+
+__host__ void pathStateIntersectionVisualize(
+    const float4* pathStates, const uint numElements, const uint stride,
+    const float4* hitData, float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    worldPosVisualize<pathStateIntersectionIterator, 0>(
+        numElements, debugRT, w, h,
+        viewP1, viewP2, viewP3, viewPos, distortion,
+        pathStates, hitData, stride
+    );
+}

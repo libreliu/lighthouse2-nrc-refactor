@@ -41,6 +41,12 @@ void debugRTVisualize(
 void writeToRenderTarget(
 	const float4* accumulator, const int w, const int h, cudaSurfaceObject_t RTsurface
 );
+void pathStateIntersectionVisualize(
+    const float4* pathStates, const uint numElements, const uint stride,
+    const float4* hitData, float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+);
 
 } // namespace lh2core
 
@@ -1081,6 +1087,7 @@ void RenderCore::InitNRC() {
 
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
+	auxRTMgr.RegisterRT("pathStateIsect");
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
@@ -1116,6 +1123,20 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		  	pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
 		  	params.scrsize.x * params.scrsize.y * params.scrsize.z,
 		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
+		);
+	}
+
+	if (auxRTMgr.isSetupAndInterested("pathStateIsect")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("pathStateIsect");
+		pathStateIntersectionVisualize(
+			pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+			params.scrsize.x * params.scrsize.y * params.scrsize.z,
+		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
 		);
 	}
 	
