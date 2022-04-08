@@ -8,6 +8,12 @@ file(GLOB FreeImage_SRC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 add_library(FreeImage STATIC ${FreeImage_SRC})
+set_target_properties(FreeImage PROPERTIES
+  CXX_STANDARD 11
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF
+)
+
 target_link_libraries(FreeImage)
 target_include_directories(FreeImage INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 target_compile_definitions(FreeImage PRIVATE 
@@ -16,7 +22,7 @@ target_compile_definitions(FreeImage PRIVATE
   # LibRaw
   LIBRAW_NODLL NO_LCMS
   # LibJXR
-  DISABLE_PERF_MEASUREMENT 
+  DISABLE_PERF_MEASUREMENT $<$<BOOL:${UNIX}>:__ANSI__>
 )
 
 # USE `FREEIMAGE_EXPORTS` and change to SHARED in case you wants the SHARED ones

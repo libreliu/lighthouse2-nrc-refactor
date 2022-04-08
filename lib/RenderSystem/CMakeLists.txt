@@ -26,9 +26,9 @@ target_include_directories(RenderSystem PUBLIC
 
 target_compile_definitions(RenderSystem PRIVATE
     RENDERSYSTEMBUILD
-    PBRT_IS_WINDOWS
-    WIN32
-    WIN64
+    $<$<BOOL:${WIN32}>:PBRT_IS_WINDOWS>
+    $<$<BOOL:${WIN32}>:WIN32>
+    $<$<BOOL:${WIN32}>:WIN64>
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<CONFIG:Release>:NDEBUG>
     _CONSOLE

@@ -10,8 +10,8 @@ target_link_libraries(RenderCore_Optix7 CUDA-Shared Optix7-Hdrs Shared-BSDF plat
 set_property(TARGET RenderCore_Optix7 PROPERTY CXX_STANDARD 17)
 target_compile_definitions(RenderCore_Optix7 PRIVATE
     COREDLL_EXPORTS
-    WIN32
-    WIN64
+    $<$<BOOL:${WIN32}>:WIN32>
+    $<$<BOOL:${WIN32}>:WIN64>
     _CRT_SECURE_NO_WARNINGS
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<CONFIG:Release>:NDEBUG>
