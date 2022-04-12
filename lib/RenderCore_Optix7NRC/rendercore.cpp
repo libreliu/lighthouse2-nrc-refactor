@@ -32,7 +32,7 @@ void finalizeRender( const float4* accumulator, const int w, const int h, const 
 
 // forward declaration of nrc cuda code
 void pathStateBufferVisualize(
-    const float4* pathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
     const float4* hitData, float4* debugRT, const uint w, const uint h
 );
 void debugRTVisualize(
@@ -42,10 +42,20 @@ void writeToRenderTarget(
 	const float4* accumulator, const int w, const int h, cudaSurfaceObject_t RTsurface
 );
 void pathStateIntersectionVisualize(
-    const float4* pathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
     const float4* hitData, float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
+);
+
+void shadeTrainKernel(
+    TrainPathState* trainPathStates,
+	float4* hits, const uint hitsStride,
+    float4* connections, const uint connectionStride,
+    NRCTraceBuf* traceBuf,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+	const int pathLength, const int w, const int h, const float spreadAngle,
+	const uint pathCount
 );
 
 } // namespace lh2core
@@ -292,9 +302,9 @@ void RenderCore::Init()
 	startEvent = CreateEvent( NULL, false, false, NULL );
 	doneEvent = CreateEvent( NULL, false, false, NULL );
 	// create worker thread
-	renderThread = new RenderThread();
-	renderThread->Init( this );
-	renderThread->start();
+	//renderThread = new RenderThread();
+	//renderThread->Init( this );
+	//renderThread->start();
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -1043,6 +1053,12 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		return auxRTMgr.SetAccumulative(value);
 	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
 		nrcNumInitialTrainingRays = std::atoi(value);
+		if (trainPathStateBuffer == nullptr ||
+			trainPathStateBuffer->GetSize() < nrcNumInitialTrainingRays) {
+			trainPathStateBuffer = new CoreBuffer<TrainPathState>(nrcNumInitialTrainingRays, ON_DEVICE);
+		}
+		// TODO: shrink on large
+		
 		return true;
 	}
 	return false;
@@ -1085,6 +1101,11 @@ void RenderCore::InitNRC() {
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsSecondary), sizeof(Params)));
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsShadow), sizeof(Params)));
 
+	trainPathStateBuffer = new CoreBuffer<TrainPathState>(
+		nrcNumInitialTrainingRays,
+		ON_DEVICE
+	);
+
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
 	auxRTMgr.RegisterRT("pathStateIsect");
@@ -1106,6 +1127,7 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
 	params.pass = samplesTaken;
 	params.bvhRoot = bvhRoot;
+	params.trainPathStates = trainPathStateBuffer->DevPtr();
 
 	if (nrcTrainingRaysSampler == UNIFORM) {
 		params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
@@ -1120,7 +1142,7 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("trainPrimaryRay");
 		pathStateBufferVisualize(
-		  	pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+		  	trainPathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
 		  	params.scrsize.x * params.scrsize.y * params.scrsize.z,
 		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
 		);
@@ -1129,7 +1151,7 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	if (auxRTMgr.isSetupAndInterested("pathStateIsect")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("pathStateIsect");
 		pathStateIntersectionVisualize(
-			pathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+			trainPathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
 			params.scrsize.x * params.scrsize.y * params.scrsize.z,
 		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
 			make_float3(view.p1.x, view.p1.y, view.p1.z),

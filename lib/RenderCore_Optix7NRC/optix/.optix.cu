@@ -168,15 +168,30 @@ __device__ void setupNRCPrimaryRayUniform( const uint pathIdx, const uint stride
 	// generate eye ray
 	float3 O, D;
 	generateEyeRay( O, D, pixelIdx, sampleIdx, seed );
-	// populate path state array
-	params.pathStates[pathIdx] = make_float4( O, __uint_as_float( (pixelIdx << 6) + 1 /* S_SPECULAR in CUDA code */ ) );
-	params.pathStates[pathIdx + stride] = make_float4( D, 0 );
-	// trace eye ray
+
+	TrainPathState *tpState = &params.trainPathStates[pathIdx];
+
+	tpState->O = O;
+	tpState->flags = 1; /* S_SPECULAR in CUDA code */
+	tpState->D = D;
+	tpState->N = 0;
+	// tpState->throughput = make_float3(0.0f, 0.0f, 0.0f);
+	// tpState->bsdfPdf = 0.0f;
+	tpState->pathIdx = pathIdx;
+	tpState->pixelIdx = pixelIdx;
+
 	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
 	optixTrace( params.bvhRoot, O, D, params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
 		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
-	if (pixelIdx < stride /* OptiX bug workaround? */) if (u2 != 0xffffffff) /* bandwidth reduction */
-		params.hitData[pathIdx] = make_float4( __uint_as_float( u0 ), __uint_as_float( u1 ), __uint_as_float( u2 ), __uint_as_float( u3 ) );
+	
+	if (pixelIdx < stride && u2 != 0xffffffff) {
+		params.hitData[pathIdx] = make_float4(
+			__uint_as_float( u0 ),
+			__uint_as_float( u1 ),
+			__uint_as_float( u2 ),
+			__uint_as_float( u3 )
+		);
+	}
 }
 
 extern "C" __global__ void __raygen__rg()

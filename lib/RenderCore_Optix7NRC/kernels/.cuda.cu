@@ -32,7 +32,7 @@ __constant__ uchar4* nrm32;
 __constant__ float4* skyPixels;
 __constant__ int skywidth;
 __constant__ int skyheight;
-__constant__ PathState* pathStates;
+//__constant__ PathState* pathStates;
 __constant__ float4* debugData;
 __constant__ LightCluster* lightTree;
 

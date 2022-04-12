@@ -25,6 +25,9 @@
 #define MAXPATHLENGTH		3
 // #define CONSISTENTNORMALS	// consistent normal interpolation
 
+// nrc settings
+#define NRC_MAX_TRAIN_PATHLENGTH 3
+
 // low-level settings
 #define BLUENOISE			// use blue noise instead of uniform random numbers
 #define BILINEAR			// enable bilinear interpolation
@@ -65,6 +68,66 @@ using namespace lh2core;
 #include <optix.h>
 
 #endif
+
+// NRC structures
+struct alignas(sizeof(float) * 4) NRCTraceBufComponent {
+    float3 rayIsect;
+    float roughness;
+    float2 rayDir;
+    float2 normalDir;
+    float3 diffuseRefl;
+    uint pixelIdx;
+    float3 specularRefl;
+    uint dummy;
+    float3 lumOutput;
+    uint traceFlags;
+    float3 throughput;
+    float pponedBsdfPdf;
+};
+
+struct NRCTraceBuf {
+	NRCTraceBufComponent traceComponent[NRC_MAX_TRAIN_PATHLENGTH];
+};
+
+#ifdef __CUDACC__
+__global__ void nrc_check_align_cudacc(float* dummy) {
+	// do some random things to avoid being optimized out, if any
+	dummy[0] = 1;
+
+	// the working part
+	static_assert(sizeof(NRCTraceBufComponent) == 6 * 4 * sizeof(float), "size unexpected");
+	static_assert(
+		sizeof(NRCTraceBuf) == sizeof(NRCTraceBufComponent) * NRC_MAX_TRAIN_PATHLENGTH,
+		"size unexpected"
+	);
+}
+
+#else
+inline void nrc_check_align_hostcc(float* dummy) {
+	// do some random things to avoid being optimized out, if any
+	dummy[0] = 1;
+
+	// the working part
+	static_assert(sizeof(NRCTraceBufComponent) == 6 * 4 * sizeof(float), "size unexpected");
+	static_assert(
+		sizeof(NRCTraceBuf) == sizeof(NRCTraceBufComponent) * NRC_MAX_TRAIN_PATHLENGTH,
+		"size unexpected"
+	);
+}
+#endif
+
+struct alignas(sizeof(float) * 4) TrainPathState
+{
+	float3 O;
+	uint flags;
+	float3 D;
+	int N;
+	float3 throughput;
+	float bsdfPdf;
+	uint pathIdx;
+	uint pixelIdx;
+	float2 dummy;
+};
 
 // for a full path state, we need a Ray, an Intersection, and
 // the data specified in PathState.
@@ -133,6 +196,9 @@ struct Params
 	float4* pathStates;
 	uint* blueNoise;
 	OptixTraversableHandle bvhRoot;
+
+	// -- NRC added --
+	TrainPathState* trainPathStates;
 };
 
 // internal material representation

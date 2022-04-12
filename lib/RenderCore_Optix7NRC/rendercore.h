@@ -162,6 +162,7 @@ private:
 	} nrcTrainingRaysSampler = UNIFORM;
 	AuxRTMgr auxRTMgr;
 	CUdeviceptr nrcParamsPrimary, nrcParamsSecondary, nrcParamsShadow;
+	CoreBuffer<TrainPathState>* trainPathStateBuffer;
 
 	void InitNRC();
 	void RenderImplNRCPrimary(const ViewPyramid &view);

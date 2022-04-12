@@ -1,5 +1,5 @@
 __global__ void pathStateBufferVisualizeKernel(
-    const float4* pathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
     const float4* hitData, float4* debugRT, const uint w, const uint h
 ) {
     const uint jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
@@ -8,7 +8,7 @@ __global__ void pathStateBufferVisualizeKernel(
     }
 
     // visualize pixelIdx
-    const uint pixelIdx = __float_as_uint(pathStates[jobIndex].w) >> 6;
+    const uint pixelIdx = trainPathStates[jobIndex].pixelIdx;
     const int pixelX = pixelIdx % w;
     const int pixelY = pixelIdx / w;
     const float4 hitEntry = hitData[jobIndex];
@@ -28,12 +28,12 @@ __global__ void pathStateBufferVisualizeKernel(
 }
 
 __host__ void pathStateBufferVisualize(
-    const float4* pathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
     const float4* hitData, float4* debugRT, const uint w, const uint h
 ) {
  	const dim3 gridDim( NEXTMULTIPLEOF( numElements, 128 ) / 128, 1 );
  	pathStateBufferVisualizeKernel <<< gridDim, 128 >>> (
-        pathStates, numElements, stride, hitData, debugRT, w, h
+        trainPathStates, numElements, stride, hitData, debugRT, w, h
     );
 }
 
@@ -109,19 +109,11 @@ __host__ void worldPosVisualize(
 
 __device__ bool pathStateIntersectionIterator(
     uint jobIndex, float3& worldPos, float3& color,
-    const float4* pathStates, const float4* hitData, const uint stride
+    const TrainPathState* trainPathStates, const float4* hitData, const uint stride
 ) {
-    const uint pixelIdx = __float_as_uint(pathStates[jobIndex].w) >> 6;
-    const float3 rayOrigin = make_float3(
-        pathStates[jobIndex].x,
-        pathStates[jobIndex].y,
-        pathStates[jobIndex].z
-    );
-    const float3 rayDirection = make_float3(
-        pathStates[jobIndex + stride].x,
-        pathStates[jobIndex + stride].y,
-        pathStates[jobIndex + stride].z
-    );
+    const uint pixelIdx = trainPathStates[jobIndex].pixelIdx;
+    const float3 rayOrigin = trainPathStates[jobIndex].O;
+    const float3 rayDirection =  trainPathStates[jobIndex].D;
 
     const float4 hitEntry = hitData[jobIndex];
     const uint primIdx = __float_as_uint(hitEntry.z);
@@ -138,7 +130,7 @@ __device__ bool pathStateIntersectionIterator(
 }
 
 __host__ void pathStateIntersectionVisualize(
-    const float4* pathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
     const float4* hitData, float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
@@ -146,6 +138,6 @@ __host__ void pathStateIntersectionVisualize(
     worldPosVisualize<pathStateIntersectionIterator, 0>(
         numElements, debugRT, w, h,
         viewP1, viewP2, viewP3, viewPos, distortion,
-        pathStates, hitData, stride
+        trainPathStates, hitData, stride
     );
 }

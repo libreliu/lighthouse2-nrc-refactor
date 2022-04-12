@@ -165,6 +165,12 @@ public:
 		options.push_back( "-IC:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/include/" );
 	#endif
 		options.push_back( "-I../../lib/CUDA/" );
+
+	#ifdef _DEBUG
+		options.push_back("--device-debug");
+		options.push_back("--generate-line-info");
+	#endif
+
 		// collect NVRTC options
 		char versionString[64];
 		snprintf( versionString, sizeof( versionString ), "compute_%i", cc >= 70 ? 70 : 50 );

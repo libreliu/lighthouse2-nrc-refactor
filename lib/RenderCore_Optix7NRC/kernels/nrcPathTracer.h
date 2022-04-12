@@ -17,8 +17,34 @@
 #define FLAGS data
 #define PATHIDX (data >> 6)
 
-// TODO: implement me
+// Full sphere instead of half, different from Spherical* utility functions
+LH2_DEVFUNC float2 toSphericalCoord(const float3& v)
+{
+  /* -PI ~ PI */
+  const float theta = std::atan2(v.y, v.x);
 
+  /* -PI/2 ~ PI/2 */
+  const float phi = std::asin(clamp(v.z, -1.f, 1.f));
+  return make_float2(theta, phi);
+}
+
+__global__ void shadeTrainKernel(
+    TrainPathState* trainPathStates,
+	float4* hits, const uint hitsStride,
+    float4* connections, const uint connectionStride,
+    NRCTraceBuf* traceBuf,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+	const int pathLength, const int w, const int h, const float spreadAngle,
+	const uint pathCount
+) {
+    static_assert(sizeof(NRCTraceBuf) == NRC_MAX_TRAIN_PATHLENGTH * 6 * 4 * sizeof(float));
+
+    // respect boundaries
+	int jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+	if (jobIndex >= pathCount) return;
+
+
+}
 
 #undef S_SPECULAR
 #undef S_BOUNCED
