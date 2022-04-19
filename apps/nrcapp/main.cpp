@@ -33,6 +33,7 @@ enum nrcRenderModeSet {
 	NRC_PRIMARY,
 	NRC_FULL
 } nrcRenderMode;
+bool renderConverge = false;
 
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
@@ -134,6 +135,11 @@ void DrawUI() {
 		renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
 	}
 
+	ImGui::Checkbox("Converge", &renderConverge);
+
+	std::string samplesTaken = renderer->GetSettingStringExt("samplesTaken");
+	ImGui::Text("samplesTaken: %s", samplesTaken.c_str());
+
 	ImGui::Separator();
 	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
 		// value changed, notify
@@ -226,7 +232,7 @@ int main()
 		// update scene
 		renderer->SynchronizeSceneData();
 		// render
-		renderer->Render( Restart /* alternative: converge */ );
+		renderer->Render( renderConverge ? Converge : Restart );
 		// handle user input
 		HandleInput( 0.025f );
 		// minimal rigid animation example

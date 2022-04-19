@@ -1098,6 +1098,8 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return auxRTMgr.ListRegisteredRTs();
 	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
 		return std::to_string(nrcNumInitialTrainingRays);
+	} else if (!strcmp(name, "samplesTaken")) {
+		return std::to_string(samplesTaken);
 	}
 
 	return "";

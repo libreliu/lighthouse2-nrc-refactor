@@ -108,13 +108,7 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 			}
 			else
 			{
-				// last vertex was not specular: apply MIS
-				const float3 lastN = UnpackNormal( __float_as_uint( D4.w ) );
-				const CoreTri& tri = (const CoreTri&)instanceTriangles[PRIMIDX];
-				const float lightPdf = CalculateLightPDF( D, HIT_T, tri.area, N );
-				const float pickProb = LightPickProb( tri.ltriIdx, RAY_O, lastN, I /* the N at the previous vertex */ );
-				// const float pickProb = LightPickProbLTree( tri.ltriIdx, RAY_O, lastN, I /* the N at the previous vertex */, seed );
-				if ((bsdfPdf + lightPdf * pickProb) > 0) contribution = throughput * shadingData.color * (1.0f / (bsdfPdf + lightPdf * pickProb));
+				contribution = throughput * shadingData.color;
 			}
 			CLAMPINTENSITY;
 			FIXNAN_FLOAT3( contribution );
@@ -132,9 +126,6 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 	// normal alignment for backfacing polygons
 	const float faceDir = (dot( D, N ) > 0) ? -1 : 1;
 	if (faceDir == 1) shadingData.transmittance = make_float3( 0 );
-
-	// apply postponed bsdf pdf
-	throughput *= 1.0f / bsdfPdf;
 
 	// prepare random numbers
 	float4 r4;
@@ -162,15 +153,10 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 		if (NdotL > 0 && lightPdf > 0)
 		{
 			float bsdfPdf;
-		#ifdef BSDF_HAS_PURE_SPECULARS // see note in lambert.h
-			const float3 sampledBSDF = EvaluateBSDF( shadingData, fN /* * faceDir */, T, D * -1.0f, L, bsdfPdf ) * ROUGHNESS;
-		#else
 			const float3 sampledBSDF = EvaluateBSDF( shadingData, fN /* * faceDir */, T, D * -1.0f, L, bsdfPdf );
-		#endif
-			if (bsdfPdf > 0)
 			{
 				// calculate potential contribution
-				float3 contribution = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf + bsdfPdf));
+				float3 contribution = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf));
 				FIXNAN_FLOAT3( contribution );
 				CLAMPINTENSITY;
 				// add fire-and-forget shadow ray to the connections buffer
@@ -205,7 +191,7 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 	pathStates[extensionRayIdx] = make_float4( SafeOrigin( I, R, N, geometryEpsilon ), __uint_as_float( FLAGS ) );
 	pathStates[extensionRayIdx + stride] = make_float4( R, __uint_as_float( packedNormal ) );
 	FIXNAN_FLOAT3( throughput );
-	pathStates[extensionRayIdx + stride * 2] = make_float4( throughput * bsdf * abs( dot( fN, R ) ), newBsdfPdf );
+	pathStates[extensionRayIdx + stride * 2] = make_float4( throughput * bsdf * abs( dot( fN, R ) ) / newBsdfPdf, 1.0f);
 }
 
 __host__ void shadeRef( const int pathCount, float4* accumulator, const uint stride,
