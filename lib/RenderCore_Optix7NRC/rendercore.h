@@ -81,7 +81,7 @@ public:
 
 	// internal methods
 private:
-	void RenderImpl( const ViewPyramid& view );
+	void RenderImpl( const ViewPyramid& view, bool useShadeRef );
 	void FinalizeRender();
 	template <class T> T* StagedBufferResize( CoreBuffer<T>*& lightBuffer, const int newCount, const T* sourceData );
 	void UpdateToplevel();
@@ -155,6 +155,12 @@ private:
 
 	// == NRC Added ==
 	uint nrcNumInitialTrainingRays = 10;
+	enum {
+		ORIGINAL,
+		REFERENCE,
+		NRC_PRIMARY,
+		NRC_FULL
+	} renderMode = ORIGINAL;
 	bool auxRTenabled = false;
 	enum {
 		UNIFORM,

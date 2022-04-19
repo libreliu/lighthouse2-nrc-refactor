@@ -13,9 +13,6 @@
 #define HIT_U ((__float_as_uint( hitData.x ) & 65535) * (1.0f / 65535.0f))
 #define HIT_V ((__float_as_uint( hitData.x ) >> 16) * (1.0f / 65535.0f))
 #define HIT_T hitData.w
-#define RAY_O make_float3( O4 )
-#define FLAGS data
-#define PATHIDX (data >> 6)
 
 // Full sphere instead of half, different from Spherical* utility functions
 LH2_DEVFUNC float2 toSphericalCoord(const float3& v)
@@ -28,6 +25,7 @@ LH2_DEVFUNC float2 toSphericalCoord(const float3& v)
   return make_float2(theta, phi);
 }
 
+// Uses the naive ray tracing
 __global__ void shadeTrainKernel(
     TrainPathState* trainPathStates,
 	float4* hits, const uint hitsStride,
@@ -43,7 +41,24 @@ __global__ void shadeTrainKernel(
 	int jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
 	if (jobIndex >= pathCount) return;
 
+    const float4 hitData = hits[jobIndex];
+    const float3 D = trainPathStates[jobIndex].D;
+    const uint pathIdx = trainPathStates[jobIndex].pathIdx;
+    const uint pixelIdx = trainPathStates[jobIndex].pixelIdx;
+    const uint flags = trainPathStates[jobIndex].flags;
+    const uint sampleIdx = pass;
 
+    if (PRIMIDX == NOHIT) {
+        float3 tD = -worldToSky.TransformVector( D );
+		float3 skyPixel = flags & S_BOUNCED ? SampleSmallSkydome( tD ) : SampleSkydome( tD );
+		float3 contribution = skyPixel;
+		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
+		FIXNAN_FLOAT3( contribution );
+		
+        NRCTraceBufComponent comp;
+        
+		return;
+    }
 }
 
 #undef S_SPECULAR
@@ -57,6 +72,3 @@ __global__ void shadeTrainKernel(
 #undef HIT_U
 #undef HIT_V
 #undef HIT_T
-#undef RAY_O
-#undef FLAGS
-#undef PATHIDX

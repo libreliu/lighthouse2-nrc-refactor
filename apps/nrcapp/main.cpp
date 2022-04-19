@@ -27,6 +27,12 @@ struct RenderTarget {
 std::string currentRT;
 bool auxRTEnabled;
 int nrcNumInitialTrainingRays = 1;
+enum nrcRenderModeSet {
+	ORIGINAL = 0,
+	REFERENCE,
+	NRC_PRIMARY,
+	NRC_FULL
+} nrcRenderMode;
 
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
@@ -116,6 +122,19 @@ void DrawUI() {
 	}
 
 	ImGui::Separator();
+
+	if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0")) {
+		std::string modeStr;
+		switch (nrcRenderMode) {
+		case ORIGINAL: modeStr = "ORIGINAL"; break;
+		case REFERENCE: modeStr = "REFERENCE"; break;
+		case NRC_PRIMARY: modeStr = "NRC_PRIMARY"; break;
+		case NRC_FULL: modeStr = "NRC_FULL"; break;
+		}
+		renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
+	}
+
+	ImGui::Separator();
 	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
 		// value changed, notify
 		if (nrcNumInitialTrainingRays < 1) {
@@ -195,6 +214,8 @@ int main()
 	renderer->DeserializeCamera( "camera.xml" );
 	// initialize auxiliary rendertargets
 	InitAuxRT();
+	// initialize nrc render mode - todo: duplicate apply
+	nrcRenderMode = nrcRenderModeSet::ORIGINAL;
 	// initialize scene
 	PrepareScene();
 	// set initial window size

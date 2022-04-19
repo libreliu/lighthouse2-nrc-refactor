@@ -48,14 +48,12 @@ void pathStateIntersectionVisualize(
     const float3 viewPos, const float distortion
 );
 
-void shadeTrainKernel(
-    TrainPathState* trainPathStates,
-	float4* hits, const uint hitsStride,
-    float4* connections, const uint connectionStride,
-    NRCTraceBuf* traceBuf,
+void shadeRef(
+	const int pathCount, float4* accumulator, const uint stride,
+	float4* pathStates, float4* hits, float4* connections,
 	const uint R0, const uint shift, const uint* blueNoise, const int pass,
-	const int pathLength, const int w, const int h, const float spreadAngle,
-	const uint pathCount
+	const int probePixelIdx, const int pathLength, const int scrwidth,
+	const int scrheight, const float spreadAngle
 );
 
 } // namespace lh2core
@@ -838,7 +836,7 @@ void RenderThread::run()
 	{
 		WaitForSingleObject( coreState.startEvent, INFINITE );
 		// render a single frame
-		coreState.RenderImpl( view );
+		coreState.RenderImpl( view, false );
 		// we're done, go back to waiting
 		SetEvent( coreState.doneEvent );
 	}
@@ -877,12 +875,21 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 	// 	RenderImplNRCPrimary( view );
 	// 	FinalizeRender();
 	// }
-	{
+	if (renderMode == ORIGINAL) {
+		RenderImpl(view, false);
+		FinalizeRender();
+	} else if (renderMode == NRC_PRIMARY) {
 		RenderImplNRCPrimary( view );
 		FinalizeRenderNRC();
+	} else if (renderMode == REFERENCE) {
+		RenderImpl(view, true);
+		FinalizeRender();
+	} else if (renderMode == NRC_FULL) {
+		// TODO: implement me
+
 	}
 }
-void RenderCore::RenderImpl( const ViewPyramid& view )
+void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
 {
 	// update acceleration structure
 	UpdateToplevel();
@@ -932,10 +939,17 @@ void RenderCore::RenderImpl( const ViewPyramid& view )
 		cudaEventRecord( traceEnd[pathLength - 1] );
 		// shade
 		cudaEventRecord( shadeStart[pathLength - 1] );
-		shade( pathCount, accumulator->DevPtr(), scrwidth * scrheight * scrspp,
+		if (useShadeRef) {
+			shadeRef( pathCount, accumulator->DevPtr(), scrwidth * scrheight * scrspp,
 			pathStateBuffer->DevPtr(), hitBuffer->DevPtr(), noDirectLightsInScene ? 0 : connectionBuffer->DevPtr(),
 			RandomUInt( camRNGseed ) + pathLength * 91771, shiftSeed, blueNoise->DevPtr(), samplesTaken,
 			probePos.x + scrwidth * probePos.y, pathLength, scrwidth, scrheight, view.spreadAngle );
+		} else {
+			shade( pathCount, accumulator->DevPtr(), scrwidth * scrheight * scrspp,
+			pathStateBuffer->DevPtr(), hitBuffer->DevPtr(), noDirectLightsInScene ? 0 : connectionBuffer->DevPtr(),
+			RandomUInt( camRNGseed ) + pathLength * 91771, shiftSeed, blueNoise->DevPtr(), samplesTaken,
+			probePos.x + scrwidth * probePos.y, pathLength, scrwidth, scrheight, view.spreadAngle );	
+		}
 		cudaEventRecord( shadeEnd[pathLength - 1] );
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
@@ -1009,10 +1023,10 @@ void RenderCore::FinalizeRender()
 	coreStats.frameOverhead = max( 0.0f, frameTimer.elapsed() - coreStats.renderTime );
 	frameTimer.reset();
 	coreStats.traceTimeX = coreStats.shadeTime = 0;
-	for (int i = 2; i < MAXPATHLENGTH; i++)
-		coreStats.traceTimeX += CUDATools::Elapsed( renderThread->coreState.traceStart[i], renderThread->coreState.traceEnd[i] );
-	for (int i = 0; i < MAXPATHLENGTH; i++)
-		coreStats.shadeTime += CUDATools::Elapsed( renderThread->coreState.shadeStart[i], renderThread->coreState.shadeEnd[i] );
+	//for (int i = 2; i < MAXPATHLENGTH; i++)
+	//	coreStats.traceTimeX += CUDATools::Elapsed( renderThread->coreState.traceStart[i], renderThread->coreState.traceEnd[i] );
+	//for (int i = 0; i < MAXPATHLENGTH; i++)
+	//	coreStats.shadeTime += CUDATools::Elapsed( renderThread->coreState.shadeStart[i], renderThread->coreState.shadeEnd[i] );
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -1060,6 +1074,20 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		// TODO: shrink on large
 		
 		return true;
+	} else if (!strcmp(name, "nrcRenderMode")) {
+		// Clear our silly accumulator
+		if (accumulator != nullptr) {
+			accumulator->Clear( ON_DEVICE );
+		}
+		if (!strcmp(value, "ORIGINAL")) {
+			renderMode = ORIGINAL;
+		} else if (!strcmp(value, "REFERENCE")) {
+			renderMode = REFERENCE;
+		} else if (!strcmp(value, "NRC_PRIMARY")) {
+			renderMode = NRC_PRIMARY;
+		} else if (!strcmp(value, "NRC_FULL")) {
+			renderMode = NRC_FULL;
+		}
 	}
 	return false;
 }
