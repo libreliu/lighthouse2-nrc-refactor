@@ -117,9 +117,6 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 		return;
 	}
 
-	// path regularization
-	if (FLAGS & S_BOUNCED) shadingData.parameters.x |= 255u << 24; // set roughness to 1 after a bounce
-
 	// detect specular surfaces
 	if (ROUGHNESS <= 0.001f || TRANSMISSION > 0.5f) FLAGS |= S_SPECULAR; /* detect pure speculars; skip NEE for these */ else FLAGS &= ~S_SPECULAR;
 
@@ -169,7 +166,7 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 	}
 
 	// cap at two diffuse bounces, or a maxium path length
-	if (FLAGS & ENOUGH_BOUNCES || pathLength == MAXPATHLENGTH) return;
+	if (pathLength == MAXPATHLENGTH) return;
 
 	// evaluate bsdf to obtain direction for next path segment
 	float3 R;
