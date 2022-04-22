@@ -69,6 +69,20 @@ using namespace lh2core;
 
 #endif
 
+#define NRC_INVALID_FLOAT 1e10
+#define NRC_INVALID_FLOAT2 make_float2(NRC_INVALID_FLOAT)
+#define NRC_INVALID_FLOAT3 make_float3(NRC_INVALID_FLOAT)
+
+// lower bits are used to do this
+#define NRC_TRACEFLAG_HIT_SKYBOX 1
+#define NRC_TRACEFLAG_HIT_LIGHT_FRONT (1 << 1)
+#define NRC_TRACEFLAG_HIT_LIGHT_BACK (1 << 2)
+#define NRC_TRACEFLAG_NEE_EMIT (1 << 3)
+#define NRC_TRACEFLAG_PATHLEN_TRUNCTUATE (1 << 4)
+#define NRC_TRACEFLAG_BSDF_TRUNCTUATE (1 << 5)
+#define NRC_TRACEFLAG_RR_TRUNCTUATE (1 << 6)
+#define NRC_TRACEFLAG_NEXT_BOUNCE (1 << 7)
+
 // NRC structures
 struct alignas(sizeof(float) * 4) NRCTraceBufComponent {
     float3 rayIsect;
@@ -76,17 +90,41 @@ struct alignas(sizeof(float) * 4) NRCTraceBufComponent {
     float2 rayDir;
     float2 normalDir;
     float3 diffuseRefl;
-    uint pixelIdx;
-    float3 specularRefl;
-    uint dummy;
-    float3 lumOutput;
     uint traceFlags;
+    float3 specularRefl;
+    uint pathIdx;
+    float3 lumOutput;
+	uint pixelIdx;
     float3 throughput;
-    float pponedBsdfPdf;
+    float dummy;
 };
 
 struct NRCTraceBuf {
 	NRCTraceBufComponent traceComponent[NRC_MAX_TRAIN_PATHLENGTH];
+};
+
+// the one that conforms to refPathTracer
+struct alignas(sizeof(float) * 4) TrainPathState
+{
+	float3 O;
+	uint flags;
+	float3 D;
+	uint pathIdx;
+	float3 throughput;
+	uint pixelIdx;
+	// float bsdfPdf;
+	// int N;
+	// float2 dummy;
+};
+
+struct alignas(sizeof(float) * 4) TrainConnectionState
+{
+	float3 O;
+	int pathIdx;
+	float3 D;
+	float dist;
+	float3 directLum;
+	int pixelIdx;
 };
 
 #ifdef __CUDACC__
@@ -100,6 +138,7 @@ __global__ void nrc_check_align_cudacc(float* dummy) {
 		sizeof(NRCTraceBuf) == sizeof(NRCTraceBufComponent) * NRC_MAX_TRAIN_PATHLENGTH,
 		"size unexpected"
 	);
+	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
 }
 
 #else
@@ -115,19 +154,6 @@ inline void nrc_check_align_hostcc(float* dummy) {
 	);
 }
 #endif
-
-struct alignas(sizeof(float) * 4) TrainPathState
-{
-	float3 O;
-	uint flags;
-	float3 D;
-	int N;
-	float3 throughput;
-	float bsdfPdf;
-	uint pathIdx;
-	uint pixelIdx;
-	float2 dummy;
-};
 
 // for a full path state, we need a Ray, an Intersection, and
 // the data specified in PathState.
@@ -182,7 +208,8 @@ struct Params
 		SPAWN_SECONDARY,		// optix code will spawn and trace extension rays
 		SPAWN_NRC_PRIMARY_UNIFORM,	// Use uniform sampler
 		SPAWN_NRC_PRIMARY_HILTON,	// Use Hilton sampler
-		SPAWN_NRC_EVEN_SPACED
+		SPAWN_NRC_SECONDARY,
+		SPAWN_NRC_SHADOW
 	};
 	float4 posLensSize;
 	float3 right, up, p1;
@@ -199,6 +226,7 @@ struct Params
 
 	// -- NRC added --
 	TrainPathState* trainPathStates;
+	TrainConnectionState* trainConnStates;
 };
 
 // internal material representation

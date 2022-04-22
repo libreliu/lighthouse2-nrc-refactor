@@ -165,7 +165,7 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 		}
 	}
 
-	// cap at two diffuse bounces, or a maxium path length
+	// cap at maxium path length
 	if (pathLength == MAXPATHLENGTH) return;
 
 	// evaluate bsdf to obtain direction for next path segment

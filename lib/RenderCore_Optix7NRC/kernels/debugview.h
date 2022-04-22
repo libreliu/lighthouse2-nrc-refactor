@@ -109,7 +109,7 @@ __host__ void worldPosVisualize(
 
 __device__ bool pathStateIntersectionIterator(
     uint jobIndex, float3& worldPos, float3& color,
-    const TrainPathState* trainPathStates, const float4* hitData, const uint stride
+    const TrainPathState* trainPathStates, const float4* hitData
 ) {
     const uint pixelIdx = trainPathStates[jobIndex].pixelIdx;
     const float3 rayOrigin = trainPathStates[jobIndex].O;
@@ -130,7 +130,7 @@ __device__ bool pathStateIntersectionIterator(
 }
 
 __host__ void pathStateIntersectionVisualize(
-    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements,
     const float4* hitData, float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
@@ -138,6 +138,38 @@ __host__ void pathStateIntersectionVisualize(
     worldPosVisualize<pathStateIntersectionIterator, 0>(
         numElements, debugRT, w, h,
         viewP1, viewP2, viewP3, viewPos, distortion,
-        trainPathStates, hitData, stride
+        trainPathStates, hitData
+    );
+}
+
+// For convenience, should adjust numElements when calling as well
+template<int pathLenStart, int pathLenEnd>
+__device__ bool traceBufIterator(
+    uint jobIndex, float3& worldPos, float3& color,
+    const NRCTraceBuf* traceBuf
+) {
+    const uint bufIdx = jobIndex / (pathLenEnd - pathLenStart);
+    const uint pathLen = jobIndex % (pathLenEnd - pathLenStart) + pathLenStart;
+    const NRCTraceBufComponent& comp = traceBuf[bufIdx].traceComponent[pathLen];
+
+    if (comp.traceFlags == 0) {
+        return false;
+    }
+    worldPos = comp.rayIsect;
+    color = comp.diffuseRefl;
+
+    return true;
+}
+
+__host__ void traceBufPrimaryVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    worldPosVisualize<traceBufIterator<0, 1>, 0>(
+        numTrainingRays, debugRT,
+        w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+        traceBuf
     );
 }

@@ -172,11 +172,10 @@ __device__ void setupNRCPrimaryRayUniform( const uint pathIdx, const uint stride
 	TrainPathState *tpState = &params.trainPathStates[pathIdx];
 
 	tpState->O = O;
+	// TODO: figure out if this is needed
 	tpState->flags = 1; /* S_SPECULAR in CUDA code */
 	tpState->D = D;
-	tpState->N = 0;
 	// tpState->throughput = make_float3(0.0f, 0.0f, 0.0f);
-	// tpState->bsdfPdf = 0.0f;
 	tpState->pathIdx = pathIdx;
 	tpState->pixelIdx = pixelIdx;
 
@@ -208,6 +207,8 @@ extern "C" __global__ void __raygen__rg()
 	case Params::SPAWN_SECONDARY: /* secondary rays */ setupSecondaryRay( rayIdx, stride ); break;
 	case Params::SPAWN_SHADOW: /* shadow rays */ generateShadowRay( rayIdx, stride ); break;
 	case Params::SPAWN_NRC_PRIMARY_UNIFORM: setupNRCPrimaryRayUniform(trainRayIdx, stride); break;
+	case Params::SPAWN_NRC_SECONDARY: break;
+	case Params::SPAWN_NRC_SHADOW: break;
 	}
 }
 

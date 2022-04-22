@@ -42,7 +42,7 @@ void writeToRenderTarget(
 	const float4* accumulator, const int w, const int h, cudaSurfaceObject_t RTsurface
 );
 void pathStateIntersectionVisualize(
-    const TrainPathState* trainPathStates, const uint numElements, const uint stride,
+    const TrainPathState* trainPathStates, const uint numElements,
     const float4* hitData, float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
@@ -54,6 +54,22 @@ void shadeRef(
 	const uint R0, const uint shift, const uint* blueNoise, const int pass,
 	const int probePixelIdx, const int pathLength, const int scrwidth,
 	const int scrheight, const float spreadAngle
+);
+void shadeTrain(
+    TrainPathState* trainPathStates, const uint pathCount,
+    TrainPathState* nextTrainPathStates,
+	float4* hits,
+    TrainConnectionState* connections,
+    NRCTraceBuf* traceBuf,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+	const int pathLength, const int w, const int h, const float spreadAngle
+);
+
+void traceBufPrimaryVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
 );
 
 } // namespace lh2core
@@ -1067,10 +1083,42 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		return auxRTMgr.SetAccumulative(value);
 	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
 		nrcNumInitialTrainingRays = std::atoi(value);
-		if (trainPathStateBuffer == nullptr ||
-			trainPathStateBuffer->GetSize() < nrcNumInitialTrainingRays) {
-			trainPathStateBuffer = new CoreBuffer<TrainPathState>(nrcNumInitialTrainingRays, ON_DEVICE);
+		for (int i = 0; i < 2; i++) {
+			if (trainPathStateBuffer[i] == nullptr ||
+				trainPathStateBuffer[i]->GetSize() < nrcNumInitialTrainingRays) {
+				if (!trainPathStateBuffer[i]) {
+					delete trainPathStateBuffer[i];
+				}
+				trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
+					nrcNumInitialTrainingRays,
+					ON_DEVICE
+				);
+			}
 		}
+		
+
+		if (trainConnStateBuffer == nullptr ||
+			trainConnStateBuffer->GetSize() < nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH) {
+			if (!trainConnStateBuffer) {
+				delete trainConnStateBuffer;
+			}
+			trainConnStateBuffer = new CoreBuffer<TrainConnectionState>(
+				nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+				ON_DEVICE
+			);
+		}
+
+		if (trainTraceBuffer == nullptr ||
+			trainTraceBuffer->GetSize() < nrcNumInitialTrainingRays) {
+			if (!trainTraceBuffer) {
+				delete trainTraceBuffer;
+			}
+			trainTraceBuffer = new CoreBuffer<NRCTraceBuf>(
+				nrcNumInitialTrainingRays,
+				ON_DEVICE
+			);
+		}
+
 		// TODO: shrink on large
 		
 		return true;
@@ -1131,7 +1179,19 @@ void RenderCore::InitNRC() {
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsSecondary), sizeof(Params)));
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsShadow), sizeof(Params)));
 
-	trainPathStateBuffer = new CoreBuffer<TrainPathState>(
+	for (int i = 0; i < 2; i++) {
+		trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
+			nrcNumInitialTrainingRays,
+			ON_DEVICE
+		);
+	}
+	
+	trainConnStateBuffer = new CoreBuffer<TrainConnectionState>(
+		nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+		ON_DEVICE
+	);
+	
+	trainTraceBuffer = new CoreBuffer<NRCTraceBuf>(
 		nrcNumInitialTrainingRays,
 		ON_DEVICE
 	);
@@ -1139,6 +1199,7 @@ void RenderCore::InitNRC() {
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
 	auxRTMgr.RegisterRT("pathStateIsect");
+	auxRTMgr.RegisterRT("traceBufPrimary");
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
@@ -1157,7 +1218,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
 	params.pass = samplesTaken;
 	params.bvhRoot = bvhRoot;
-	params.trainPathStates = trainPathStateBuffer->DevPtr();
+	params.trainPathStates = trainPathStateBuffer[0]->DevPtr();
+	params.trainConnStates = trainConnStateBuffer->DevPtr();
 
 	if (nrcTrainingRaysSampler == UNIFORM) {
 		params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
@@ -1172,7 +1234,7 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("trainPrimaryRay");
 		pathStateBufferVisualize(
-		  	trainPathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
+		  	trainPathStateBuffer[0]->DevPtr(), nrcNumInitialTrainingRays,
 		  	params.scrsize.x * params.scrsize.y * params.scrsize.z,
 		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
 		);
@@ -1181,8 +1243,7 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	if (auxRTMgr.isSetupAndInterested("pathStateIsect")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("pathStateIsect");
 		pathStateIntersectionVisualize(
-			trainPathStateBuffer->DevPtr(), nrcNumInitialTrainingRays,
-			params.scrsize.x * params.scrsize.y * params.scrsize.z,
+			trainPathStateBuffer[0]->DevPtr(), nrcNumInitialTrainingRays,
 		  	hitBuffer->DevPtr(), rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
 			make_float3(view.p1.x, view.p1.y, view.p1.z),
 			make_float3(view.p2.x, view.p2.y, view.p2.z),
@@ -1192,8 +1253,34 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		);
 	}
 	
-
 	// 2. Learn from primary
+	InitCountersForExtend(nrcNumInitialTrainingRays);
+
+	shadeTrain(
+		trainPathStateBuffer[0]->DevPtr(), nrcNumInitialTrainingRays,
+		trainPathStateBuffer[1]->DevPtr(),
+		hitBuffer->DevPtr(),
+		trainConnStateBuffer->DevPtr(), trainTraceBuffer->DevPtr(),
+		RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, 0,
+		scrwidth, scrheight, view.spreadAngle
+	);
+	
+
+
+	CHK_CUDA(cudaStreamSynchronize(0));
+
+	if (auxRTMgr.isSetupAndInterested("traceBufPrimary")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufPrimary");
+		traceBufPrimaryVisualize(
+			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
 
 	// 2.x validation
 
