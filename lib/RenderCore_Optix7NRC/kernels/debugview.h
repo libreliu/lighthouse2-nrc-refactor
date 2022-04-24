@@ -143,7 +143,7 @@ __host__ void pathStateIntersectionVisualize(
 }
 
 // For convenience, should adjust numElements when calling as well
-template<int pathLenStart, int pathLenEnd>
+template<int pathLenStart, int pathLenEnd, int visualizeType>
 __device__ bool traceBufIterator(
     uint jobIndex, float3& worldPos, float3& color,
     const NRCTraceBuf* traceBuf
@@ -156,18 +156,36 @@ __device__ bool traceBufIterator(
         return false;
     }
     worldPos = comp.rayIsect;
-    color = comp.diffuseRefl;
+
+    if (visualizeType == 1) {
+        color = comp.diffuseRefl;
+    } else if (visualizeType == 2) {
+        color = comp.lumOutput;
+    }
 
     return true;
 }
 
-__host__ void traceBufPrimaryVisualize(
+__host__ void traceBufPrimaryDiffuseReflVisualize(
     const NRCTraceBuf* traceBuf, const uint numTrainingRays,
     float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
 ) {
-    worldPosVisualize<traceBufIterator<0, 1>, 0>(
+    worldPosVisualize<traceBufIterator<0, 1, 1>, 0>(
+        numTrainingRays, debugRT,
+        w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+        traceBuf
+    );
+}
+
+__host__ void traceBufPrimaryLumOutputVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    worldPosVisualize<traceBufIterator<0, 1, 2>, 0>(
         numTrainingRays, debugRT,
         w, h, viewP1, viewP2, viewP3, viewPos, distortion,
         traceBuf

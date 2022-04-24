@@ -227,6 +227,8 @@ struct Params
 	// -- NRC added --
 	TrainPathState* trainPathStates;
 	TrainConnectionState* trainConnStates;
+	NRCTraceBuf* trainTraces;
+	uint pathLength;
 };
 
 // internal material representation

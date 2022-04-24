@@ -65,7 +65,13 @@ void shadeTrain(
 	const int pathLength, const int w, const int h, const float spreadAngle
 );
 
-void traceBufPrimaryVisualize(
+void traceBufPrimaryDiffuseReflVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+);
+void traceBufPrimaryLumOutputVisualize(
     const NRCTraceBuf* traceBuf, const uint numTrainingRays,
     float4* debugRT, const uint w, const uint h,
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
@@ -1082,11 +1088,15 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 	} else if (!strcmp(name, "setAuxTargetAccumulative")) {
 		return auxRTMgr.SetAccumulative(value);
 	} else if (!strcmp(name, "nrcNumInitialTrainingRays")) {
+		// Perform stream sync to avoid any race conditions
+		// TODO: tiny-cuda-nn related sync
+		CHK_CUDA(cudaStreamSynchronize(0));
+
 		nrcNumInitialTrainingRays = std::atoi(value);
 		for (int i = 0; i < 2; i++) {
 			if (trainPathStateBuffer[i] == nullptr ||
 				trainPathStateBuffer[i]->GetSize() < nrcNumInitialTrainingRays) {
-				if (!trainPathStateBuffer[i]) {
+				if (trainPathStateBuffer[i]) {
 					delete trainPathStateBuffer[i];
 				}
 				trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
@@ -1099,7 +1109,7 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 
 		if (trainConnStateBuffer == nullptr ||
 			trainConnStateBuffer->GetSize() < nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH) {
-			if (!trainConnStateBuffer) {
+			if (trainConnStateBuffer) {
 				delete trainConnStateBuffer;
 			}
 			trainConnStateBuffer = new CoreBuffer<TrainConnectionState>(
@@ -1110,7 +1120,7 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 
 		if (trainTraceBuffer == nullptr ||
 			trainTraceBuffer->GetSize() < nrcNumInitialTrainingRays) {
-			if (!trainTraceBuffer) {
+			if (trainTraceBuffer) {
 				delete trainTraceBuffer;
 			}
 			trainTraceBuffer = new CoreBuffer<NRCTraceBuf>(
@@ -1199,12 +1209,15 @@ void RenderCore::InitNRC() {
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
 	auxRTMgr.RegisterRT("pathStateIsect");
-	auxRTMgr.RegisterRT("traceBufPrimary");
+	auxRTMgr.RegisterRT("traceBufPrimaryDRefl");
+	auxRTMgr.RegisterRT("traceBufPrimaryLOut");
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	// update acceleration structure
 	UpdateToplevel();
+
+	trainTraceBuffer->Clear(ON_DEVICE);
 
 	// 1. Primary with Sobel 2D sampling for screen output
 	RandomUInt( shiftSeed );
@@ -1220,6 +1233,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	params.bvhRoot = bvhRoot;
 	params.trainPathStates = trainPathStateBuffer[0]->DevPtr();
 	params.trainConnStates = trainConnStateBuffer->DevPtr();
+	params.trainTraces = trainTraceBuffer->DevPtr();
+	params.pathLength = 0; /* NOTICE THIS; TODO: add separate? */
 
 	if (nrcTrainingRaysSampler == UNIFORM) {
 		params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
@@ -1228,7 +1243,13 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	}
 
 	assert(nrcNumInitialTrainingRays <= params.scrsize.x * params.scrsize.y * params.scrsize.z);
-	cudaMemcpyAsync( (void*)nrcParamsPrimary, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+	// cudaMemcpyAsync( (void*)nrcParamsPrimary, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0 );
+	cudaMemcpyAsync((void*)nrcParamsPrimary, &params, sizeof( Params ), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_NRC_SHADOW;
+	cudaMemcpyAsync((void*)nrcParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_NRC_SECONDARY;
+	cudaMemcpyAsync((void*)nrcParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+
 	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, nrcNumInitialTrainingRays, 1, 1 ) );
 	
 	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
@@ -1264,14 +1285,31 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, 0,
 		scrwidth, scrheight, view.spreadAngle
 	);
-	
-
 
 	CHK_CUDA(cudaStreamSynchronize(0));
 
-	if (auxRTMgr.isSetupAndInterested("traceBufPrimary")) {
-		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufPrimary");
-		traceBufPrimaryVisualize(
+	if (auxRTMgr.isSetupAndInterested("traceBufPrimaryDRefl")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufPrimaryDRefl");
+		traceBufPrimaryDiffuseReflVisualize(
+			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
+
+	Counters counters;
+	counterBuffer->CopyToHost();
+	counters = counterBuffer->HostPtr()[0];
+
+	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsShadow, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
+
+	if (auxRTMgr.isSetupAndInterested("traceBufPrimaryLOut")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufPrimaryLOut");
+		traceBufPrimaryLumOutputVisualize(
 			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays,
 			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
 			make_float3(view.p1.x, view.p1.y, view.p1.z),
