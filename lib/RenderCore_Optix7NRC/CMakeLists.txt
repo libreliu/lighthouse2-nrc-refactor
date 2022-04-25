@@ -29,4 +29,4 @@ set_property(
 )
 
 # Use nvrtc if you want runtime compilation
-target_link_libraries(RenderCore_Optix7NRC CUDA::nvrtc CUDA::cudart_static)
+target_link_libraries(RenderCore_Optix7NRC CUDA::nvrtc CUDA::cudart_static tiny-cuda-nn)

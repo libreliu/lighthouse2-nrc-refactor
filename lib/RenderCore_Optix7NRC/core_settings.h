@@ -127,6 +127,21 @@ struct alignas(sizeof(float) * 4) TrainConnectionState
 	int pixelIdx;
 };
 
+struct alignas(sizeof(float) * 4) NRCNetInferenceInput
+{
+	float3 rayIsect;
+	float roughness;
+	float2 rayDir;
+	float2 normalDir;
+	float3 diffuseRefl;
+	float3 specularRefl;
+};
+
+struct alignas(sizeof(float) * 4) NRCNetInferenceOutput
+{
+	float3 lumOutput;
+};
+
 #ifdef __CUDACC__
 __global__ void nrc_check_align_cudacc(float* dummy) {
 	// do some random things to avoid being optimized out, if any
@@ -139,6 +154,9 @@ __global__ void nrc_check_align_cudacc(float* dummy) {
 		"size unexpected"
 	);
 	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
+
+	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
+	static_assert(sizeof(NRCNetInferenceOutput) == 4 * sizeof(float), "size unexpected");
 }
 
 #else
@@ -152,6 +170,9 @@ inline void nrc_check_align_hostcc(float* dummy) {
 		sizeof(NRCTraceBuf) == sizeof(NRCTraceBufComponent) * NRC_MAX_TRAIN_PATHLENGTH,
 		"size unexpected"
 	);
+	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
+	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
+	static_assert(sizeof(NRCNetInferenceOutput) == 4 * sizeof(float), "size unexpected");
 }
 #endif
 
