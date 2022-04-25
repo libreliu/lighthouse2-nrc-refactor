@@ -116,10 +116,10 @@ if (CUDA_VERSION VERSION_GREATER_EQUAL 11.0)
 	list(APPEND TCNN_DEFINITIONS -DTCNN_SHAMPOO)
 endif()
 
-add_definitions(${TCNN_DEFINITIONS})
-if (TCNN_HAS_PARENT)
-	set(TCNN_DEFINITIONS ${TCNN_DEFINITIONS} PARENT_SCOPE)
-endif()
+# add_definitions(${TCNN_DEFINITIONS})
+# if (TCNN_HAS_PARENT)
+# 	set(TCNN_DEFINITIONS ${TCNN_DEFINITIONS} PARENT_SCOPE)
+# endif()
 
 if (MSVC)
 else()
@@ -144,26 +144,69 @@ find_library(
 	${CUDA_TOOLKIT_ROOT_DIR}/lib64
 	${CUDA_TOOLKIT_ROOT_DIR}/lib
 )
-include_directories("include")
-include_directories("dependencies")
-include_directories("dependencies/cutlass/include")
-include_directories("dependencies/cutlass/tools/util/include")
 
+set(COMMON_INCLUDES
+	"include"
+	"dependencies"
+	"dependencies/cutlass/include"
+	"dependencies/cutlass/tools/util/include"
+)
 
 ###############################################################################
 # tiny-cuda-nn library, samples, and benchmarks
 ###############################################################################
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR})
+set(SOURCES
+	src/common.cu
+	src/common_device.cu
+	src/cpp_api.cu
+	src/cutlass_mlp.cu
+	src/encoding.cu
+	src/loss.cu
+	src/network.cu
+	src/object.cu
+	src/optimizer.cu
+	src/reduce_sum.cu
+)
 
-add_subdirectory("src")
+if (MIN_GPU_ARCH GREATER_EQUAL 70)
+	list(APPEND SOURCES src/fully_fused_mlp.cu)
+endif()
+
+add_library(tiny-cuda-nn STATIC ${SOURCES})
+target_link_libraries(tiny-cuda-nn PUBLIC
+	${CUDA_LIBRARIES} cuda cublas
+)
+target_compile_options(tiny-cuda-nn PUBLIC
+	$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>
+)
+target_compile_definitions(tiny-cuda-nn PUBLIC
+	${TCNN_DEFINITIONS}
+)
+target_include_directories(tiny-cuda-nn PUBLIC ${COMMON_INCLUDES})
 
 if (TCNN_BUILD_EXAMPLES)
-	add_subdirectory("samples")
+	add_executable(mlp_learning_an_image
+		samples/mlp_learning_an_image.cu
+		dependencies/stbi/stbi_wrapper.cpp
+	)
+	target_link_libraries(mlp_learning_an_image PUBLIC
+		${CUDA_LIBRARIES} tiny-cuda-nn
+	)
+	target_compile_options(mlp_learning_an_image PRIVATE
+		$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>
+	)
 endif()
+
 if (TCNN_BUILD_BENCHMARK)
-	add_subdirectory("benchmarks/image")
+	add_executable(bench_image_ours
+		benchmarks/image/bench_ours.cu
+		dependencies/stbi/stbi_wrapper.cpp
+	)
+	target_link_libraries(bench_image_ours PUBLIC
+		${CUDA_LIBRARIES} tiny-cuda-nn cublas
+	)
+	target_compile_options(bench_image_ours PRIVATE
+		$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>
+	)
 endif()
