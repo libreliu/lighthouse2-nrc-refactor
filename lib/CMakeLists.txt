@@ -3,7 +3,7 @@ add_library(Common-Libs INTERFACE)
 target_include_directories(Common-Libs INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # For tiny-cuda-nn
-set($ENV{TCNN_CUDA_ARCHITECTURES} "75")
+set(ENV{TCNN_CUDA_ARCHITECTURES} "75")
 
 # Specific target libraries to build
 add_subdirectory(tinyxml2)
