@@ -1,5 +1,7 @@
 #include "core_settings.h"
 
+#include <memory>
+
 #include <tiny-cuda-nn/common_device.h>
 #include <tiny-cuda-nn/config.h>
 #include <tiny-cuda-nn/random.h>
@@ -21,8 +23,9 @@ public:
   float Train(
     CoreBuffer<NRCTraceBuf>* trainTraceBuffer,
     uint numTrainingRays,
-    uint maxPathLength,
-    uint batchSize
+    uint maxPathLength,  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
+    uint batchSize,
+    uint numTrainingSteps
   );
   void Inference(
     CoreBuffer<NRCNetInferenceInput>* infInputBuffer,
@@ -30,13 +33,27 @@ public:
     CoreBuffer<NRCNetInferenceOutput>* infOutputBuffer
   );
 
-private:
-  std::shared_ptr<tcnn::Loss<network_precision_t>> loss;
-	std::shared_ptr<tcnn::Optimizer<network_precision_t>> optimizer;
-	std::shared_ptr<tcnn::NetworkWithInputEncoding<network_precision_t>> network;
-	std::shared_ptr<tcnn::Trainer<float, network_precision_t, network_precision_t>> trainer;
+  //using TCNNTrainInput = NRCNetInferenceInput;
+  // Added two dummy segs
+  struct alignas(sizeof(float) * 4) TCNNTrainInput{
+    float3 rayIsect;
+    float roughness;
+    float2 rayDir;
+    float2 normalDir;
+    float3 diffuseRefl;
+    float3 specularRefl;
+    float dummies[2];
+  };
+  void Destroy();
 
+private:
+  bool initialized = false;
+
+  tcnn::TrainableModel model;
 	cudaStream_t inference_stream;
 	cudaStream_t training_stream;
 
+  // Column major by default, alter might cause tiny-cuda-nn deficiency
+  std::unique_ptr<tcnn::GPUMatrix<float>> trainBatchInputCM;
+  std::unique_ptr<tcnn::GPUMatrix<float>> trainBatchTargetCM;
 };

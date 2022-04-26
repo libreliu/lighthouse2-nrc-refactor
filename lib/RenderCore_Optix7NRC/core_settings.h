@@ -135,6 +135,7 @@ struct alignas(sizeof(float) * 4) NRCNetInferenceInput
 	float2 normalDir;
 	float3 diffuseRefl;
 	float3 specularRefl;
+	float dummies[2];    // TODO: remove this once we fix tiny-cuda-nn; set to 0 before
 };
 
 struct alignas(sizeof(float) * 4) NRCNetInferenceOutput
