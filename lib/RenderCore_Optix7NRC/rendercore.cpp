@@ -17,6 +17,8 @@
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 #include <cstring>
+#include <algorithm>
+
 namespace lh2core
 {
 
@@ -1057,6 +1059,8 @@ void RenderCore::FinalizeRender()
 //  +-----------------------------------------------------------------------------+
 void RenderCore::Shutdown()
 {
+	ShutdownNRC();
+
 	optixPipelineDestroy( pipeline );
 	for (int i = 0; i < 5; i++) optixProgramGroupDestroy( progGroup[i] );
 	optixModuleDestroy( ptxModule );
@@ -1206,11 +1210,23 @@ void RenderCore::InitNRC() {
 		ON_DEVICE
 	);
 
+	nrcNet = new NRCTinyCudaNN();
+
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
 	auxRTMgr.RegisterRT("pathStateIsect");
 	auxRTMgr.RegisterRT("traceBufPrimaryDRefl");
 	auxRTMgr.RegisterRT("traceBufPrimaryLOut");
+}
+
+void RenderCore::ShutdownNRC() {
+	if (nrcNet) {
+		nrcNet->Destroy();
+		delete nrcNet;
+	}
+
+	if (trainConnStateBuffer) delete trainConnStateBuffer;
+	if (trainTraceBuffer) delete trainTraceBuffer;
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
@@ -1319,6 +1335,11 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 			view.distortion
 		);
 	}
+
+	// train
+	int trainBatchSize = std::min(nrcNumInitialTrainingRays, 256u);
+	float loss = nrcNet->Train(trainTraceBuffer, nrcNumInitialTrainingRays, 1, trainBatchSize, 1);
+
 
 	// 2.x validation
 

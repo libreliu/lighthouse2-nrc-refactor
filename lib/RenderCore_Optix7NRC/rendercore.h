@@ -16,6 +16,7 @@
 #pragma once
 
 #include "AuxRTMgr.h"
+#include "nrcNetTCNN.h"
 
 namespace lh2core
 {
@@ -175,7 +176,10 @@ private:
 	
 	CoreBuffer<NRCTraceBuf>* trainTraceBuffer;
 
+	NRCTinyCudaNN* nrcNet;
+
 	void InitNRC();
+	void ShutdownNRC();
 	void RenderImplNRCPrimary(const ViewPyramid &view);
 	void FinalizeRenderNRC();
 

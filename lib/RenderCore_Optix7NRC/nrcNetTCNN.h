@@ -1,26 +1,37 @@
 #include "core_settings.h"
 
 #include <memory>
+#include <vector>
 
-#include <tiny-cuda-nn/common_device.h>
-#include <tiny-cuda-nn/config.h>
-#include <tiny-cuda-nn/random.h>
-#include <tiny-cuda-nn/gpu_matrix.h>
-#include <tiny-cuda-nn/encodings/oneblob.h>
-
-#include <tiny-cuda-nn/optimizer.h>
-#include <tiny-cuda-nn/loss.h>
-#include <tiny-cuda-nn/network_with_input_encoding.h>
-
-#include <tiny-cuda-nn/trainer.h>
 #include "shared_host_code/cudatools.h"
 
-using network_precision_t = tcnn::network_precision_t;
+#ifdef __CUDACC__
+#include <tiny-cuda-nn/common_device.h>
+#include <tiny-cuda-nn/config.h>
+#else
+
+namespace tcnn {
+class TrainableModel;
+enum class MatrixLayout {
+	RowMajor = 0,
+	SoA = 0, // For data matrices TCNN's convention is RowMajor == SoA (struct of arrays)
+	ColumnMajor = 1,
+	AoS = 1,
+};
+
+template<typename T>
+class GPUMatrixDynamic;
+
+template<typename T, MatrixLayout _layout = MatrixLayout::ColumnMajor>
+class GPUMatrix;
+
+}
+#endif
 
 class NRCTinyCudaNN {
 public:
-  void Init();
-  void Train(
+  void Init(int maxTrainHistCount);
+  float Train(
     CoreBuffer<NRCTraceBuf>* trainTraceBuffer,
     uint numTrainingRays,
     uint maxPathLength,  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
@@ -47,13 +58,14 @@ public:
   void Destroy();
 
 private:
-  bool initialized = false;
-
-  tcnn::TrainableModel model;
-	cudaStream_t inference_stream;
-	cudaStream_t training_stream;
+  tcnn::TrainableModel* model;
 
   // Column major by default, alter might cause tiny-cuda-nn deficiency
-  std::unique_ptr<tcnn::GPUMatrix<float>> trainBatchInputCM;
-  std::unique_ptr<tcnn::GPUMatrix<float>> trainBatchTargetCM;
+  // Reason for not using unique_ptr: this class shall be called from hostcc compiled host code
+  // and on the hostcc side, including <tiny-cuda-nn/gpu_matrix.h> will break since it requires
+  // nvcc to compile. Forward declaration is tried, but std::unique_ptr requires complete type
+  // to perform delete, hence will not work.
+  // All the creation and destroy belongs to the coda impl.h as a final design decision.
+  tcnn::GPUMatrix<float> *trainBatchInputCM;
+  tcnn::GPUMatrix<float> *trainBatchTargetCM;
 };

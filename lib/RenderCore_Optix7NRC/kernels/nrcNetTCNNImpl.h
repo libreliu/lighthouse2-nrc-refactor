@@ -35,7 +35,7 @@ __global__ void NRCTCNN_TraceBufToTrainBatch(
     tTarget[2] = comp.lumOutput.z;
 }
 
-void NRCTinyCudaNN::Init() {
+void NRCTinyCudaNN::Init(int maxTrainHistCount) {
     static_assert(sizeof(TCNNTrainInput) == sizeof(float) * 4 * 4, "size unexpected");
 
     nlohmann::json config = {
@@ -79,10 +79,11 @@ void NRCTinyCudaNN::Init() {
         }},
     };
 
-    model = tcnn::create_from_config(16, 3, config);
+    model = new tcnn::TrainableModel;
+    *model = tcnn::create_from_config(16, 3, config);
 }
 
-void NRCTinyCudaNN::Train(
+float NRCTinyCudaNN::Train(
     CoreBuffer<NRCTraceBuf>* trainTraceBuffer,
     uint numTrainingRays,
     uint maxPathLength,  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
@@ -91,25 +92,29 @@ void NRCTinyCudaNN::Train(
 ) {
     if (numTrainingRays == 0 || maxPathLength == 0) {
         printf("Warning: NRCTinyCudaNN got zero numTrainingRays or zero maxPathLength\n");
-        return;
+        return 0.0;
     }
 
     uint totalElements = numTrainingRays * maxPathLength;
 
-    if (trainBatchInputCM.get() == nullptr ||
+    if (trainBatchInputCM == nullptr ||
         trainBatchInputCM->cols() < batchSize) {
-        trainBatchInputCM = std::make_unique<tcnn::GPUMatrix<float>>(64, batchSize);
+        if (trainBatchInputCM) delete trainBatchInputCM;
+        trainBatchInputCM = new tcnn::GPUMatrix<float>(64, batchSize);
     }
 
-    if (trainBatchTargetCM.get() == nullptr ||
+    if (trainBatchTargetCM == nullptr ||
         trainBatchTargetCM->cols() < batchSize) {
-        trainBatchTargetCM = std::make_unique<tcnn::GPUMatrix<float>>(3, batchSize);
+        if (trainBatchTargetCM) delete trainBatchTargetCM;
+        trainBatchTargetCM = new tcnn::GPUMatrix<float>(3, batchSize);
     }
 
     int numBatches = totalElements / batchSize;
     if (numBatches * batchSize < totalElements) {
         numBatches++;
     }
+
+    float avgLoss = 0.0f;
 
     for (uint i = 0; i < numTrainingSteps; i++) {
         for (int batchIdx = 0; batchIdx < numBatches; batchIdx++) {
@@ -123,12 +128,12 @@ void NRCTinyCudaNN::Train(
                 trainBatchTargetCM->data()
             );
 
-            float loss;
-            model.trainer->training_step(*trainBatchInputCM, *trainBatchTargetCM, &loss);
-
-            // TODO: log
+            auto ctx = model->trainer->training_step(*trainBatchInputCM, *trainBatchTargetCM);
+            avgLoss += model->trainer->loss(*ctx) * (1.0f / numTrainingSteps);
         }
     }
+
+    return avgLoss;
 }
 
 void NRCTinyCudaNN::Inference(
@@ -140,10 +145,12 @@ void NRCTinyCudaNN::Inference(
     tcnn::GPUMatrix<float> infInputCM((float*)infInputBuffer->DevPtr(), 64u, numInfRays);
     tcnn::GPUMatrix<float> infOutputCM((float*)infOutputBuffer->DevPtr(), 3u, numInfRays);
 
-    model.network->inference(infInputCM, infOutputCM);
+    model->network->inference(infInputCM, infOutputCM);
 }
 
 void NRCTinyCudaNN::Destroy() {
     // TODO: perform stream sync
-    
+    if (trainBatchInputCM) delete trainBatchInputCM;
+    if (trainBatchTargetCM) delete trainBatchTargetCM;
+    if (model) delete model;
 }
