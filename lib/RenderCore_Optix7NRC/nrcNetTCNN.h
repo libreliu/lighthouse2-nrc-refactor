@@ -20,7 +20,7 @@ using network_precision_t = tcnn::network_precision_t;
 class NRCTinyCudaNN {
 public:
   void Init();
-  float Train(
+  void Train(
     CoreBuffer<NRCTraceBuf>* trainTraceBuffer,
     uint numTrainingRays,
     uint maxPathLength,  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
