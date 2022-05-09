@@ -17,6 +17,14 @@ target_compile_definitions(RenderCore_Optix7NRC PRIVATE
     $<$<CONFIG:Release>:NDEBUG>
     _CONSOLE
 )
+
+# TODO: separate debug & release
+if (OPTION_CUDA_DEBUG_FULL)
+    target_compile_options(RenderCore_Optix7NRC PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:"-G">
+    )
+endif()
+
 set_target_properties(RenderCore_Optix7NRC PROPERTIES CUDA_ARCHITECTURES "75")
 target_include_directories(RenderCore_Optix7NRC PUBLIC 
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}

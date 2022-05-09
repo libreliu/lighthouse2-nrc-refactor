@@ -39,6 +39,23 @@ FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "\n\t(Are you running using
 FATALERROR_IN( #stmt, CUDATools::decodeError( ret ), "" ) } } while ( 0 )
 #define CHK_NVRTC( stmt ) FATALERROR_IN_CALL( ( stmt ), nvrtcGetErrorString, "" )
 
+
+// Quick fix to call from host code in .cuda.cu
+#ifndef MALLOC64
+
+// data / memory address alignment
+#ifdef _MSC_VER
+#define ALIGN( x ) __declspec( align( x ) )
+#define MALLOC64( x ) ((x)==0?0:_aligned_malloc((x),64))
+#define FREE64( x ) _aligned_free( x )
+#else
+#define ALIGN( x ) __attribute__( ( aligned( x ) ) )
+#define MALLOC64( x ) ((x)==0?0:aligned_alloc(64, (x)))
+#define FREE64( x ) free( x )
+#endif
+
+#endif
+
 enum { NOT_ALLOCATED = 0, ON_HOST = 1, ON_DEVICE = 2, STAGED = 4 };
 enum { POLICY_DEFAULT = 0, POLICY_COPY_SOURCE };
 

@@ -155,7 +155,7 @@ private:
 	cudaEvent_t shadowStart, shadowEnd;
 
 	// == NRC Added ==
-	uint nrcNumInitialTrainingRays = 10;
+	uint nrcNumInitialTrainingRays = 256;
 	enum {
 		ORIGINAL,
 		REFERENCE,

@@ -196,8 +196,14 @@ void RenderCore::CreateOptixContext( int cc, bool forceRecompile )
 	// create the optix module
 	OptixModuleCompileOptions module_compile_options = {};
 	module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+#ifdef _DEBUG
+	module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+	module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+#else
 	module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3;
 	module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+#endif
+
 	OptixPipelineCompileOptions pipeCompileOptions = {};
 	pipeCompileOptions.usesMotionBlur = false;
 	pipeCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
@@ -1211,6 +1217,7 @@ void RenderCore::InitNRC() {
 	);
 
 	nrcNet = new NRCTinyCudaNN();
+	nrcNet->Init();
 
 	auxRTMgr.RegisterRT("trainPrimaryRay");
 	auxRTMgr.RegisterRT("debugRTVisualize");
@@ -1337,9 +1344,11 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	}
 
 	// train
-	int trainBatchSize = std::min(nrcNumInitialTrainingRays, 256u);
-	float loss = nrcNet->Train(trainTraceBuffer, nrcNumInitialTrainingRays, 1, trainBatchSize, 1);
+	int trainBatchSize = nrcNumInitialTrainingRays;
+	int rayProcessed = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
+	float loss = nrcNet->Train(256, 1);
 
+	CHK_CUDA(cudaDeviceSynchronize());
 
 	// 2.x validation
 

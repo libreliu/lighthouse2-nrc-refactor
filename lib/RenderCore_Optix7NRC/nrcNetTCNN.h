@@ -30,11 +30,13 @@ class GPUMatrix;
 
 class NRCTinyCudaNN {
 public:
-  void Init(int maxTrainHistCount);
-  float Train(
+  void Init();
+  uint Preprocess(
     CoreBuffer<NRCTraceBuf>* trainTraceBuffer,
     uint numTrainingRays,
-    uint maxPathLength,  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
+    uint maxPathLength  // 1, 2, 3.., NRC_MAX_TRAIN_PATHLENGTH
+  );
+  float Train(
     uint batchSize,
     uint numTrainingSteps
   );
@@ -58,6 +60,8 @@ public:
   void Destroy();
 
 private:
+  bool initialized = false;
+  bool prepared = false;
   tcnn::TrainableModel* model;
 
   // Column major by default, alter might cause tiny-cuda-nn deficiency
@@ -68,4 +72,8 @@ private:
   // All the creation and destroy belongs to the coda impl.h as a final design decision.
   tcnn::GPUMatrix<float> *trainBatchInputCM;
   tcnn::GPUMatrix<float> *trainBatchTargetCM;
+
+  tcnn::GPUMatrix<float> *trainInputCM;
+  tcnn::GPUMatrix<float> *trainTargetCM;
+  CoreBuffer<uint> *numPreparedRays;
 };
