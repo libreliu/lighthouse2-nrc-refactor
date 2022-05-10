@@ -1237,6 +1237,8 @@ void RenderCore::ShutdownNRC() {
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
+	//printf("Rendering frame...\n");
+
 	// update acceleration structure
 	UpdateToplevel();
 
@@ -1273,8 +1275,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	params.phase = Params::SPAWN_NRC_SECONDARY;
 	cudaMemcpyAsync((void*)nrcParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
 
-	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, nrcNumInitialTrainingRays, 1, 1 ) );
-	
+	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, nrcNumInitialTrainingRays, 1, 1 ) );	
+
 	if (auxRTMgr.isSetupAndInterested("trainPrimaryRay")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("trainPrimaryRay");
 		pathStateBufferVisualize(
@@ -1299,6 +1301,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	
 	// 2. Learn from primary
 	InitCountersForExtend(nrcNumInitialTrainingRays);
+
+	//hitBuffer->CopyToHost();
 
 	shadeTrain(
 		trainPathStateBuffer[0]->DevPtr(), nrcNumInitialTrainingRays,
@@ -1328,7 +1332,9 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	counterBuffer->CopyToHost();
 	counters = counterBuffer->HostPtr()[0];
 
-	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsShadow, sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
+	if (counters.shadowRays > 0) {
+		CHK_OPTIX(optixLaunch(pipeline, 0, nrcParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1));
+	}
 
 	if (auxRTMgr.isSetupAndInterested("traceBufPrimaryLOut")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufPrimaryLOut");
@@ -1345,8 +1351,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 
 	// train
 	int trainBatchSize = nrcNumInitialTrainingRays;
-	int rayProcessed = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
-	float loss = nrcNet->Train(256, 1);
+	//int rayProcessed = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
+	//float loss = nrcNet->Train(256, 1);
 
 	CHK_CUDA(cudaDeviceSynchronize());
 

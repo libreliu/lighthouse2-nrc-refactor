@@ -51,7 +51,6 @@ __global__ void shadeTrainKernel(
     //const float3 throughput = tpState.throughput;
     const uint pixelIdx = tpState.pixelIdx;
     const uint sampleIdx = pass;
-    const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
 
     if (PRIMIDX == NOHIT) {
         float3 tD = -worldToSky.TransformVector( D );
@@ -75,6 +74,8 @@ __global__ void shadeTrainKernel(
         }
 		return;
     }
+
+    const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
 
     // get shadingData and normals
 	ShadingData shadingData;

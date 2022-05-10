@@ -183,6 +183,7 @@ __device__ void setupNRCPrimaryRayUniform( const uint pathIdx, const uint stride
 	optixTrace( params.bvhRoot, O, D, params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
 		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
 	
+	//printf("%d: u2=%d\n", pathIdx, u2);
 	if (pixelIdx < stride && u2 != 0xffffffff) {
 		params.hitData[pathIdx] = make_float4(
 			__uint_as_float( u0 ),

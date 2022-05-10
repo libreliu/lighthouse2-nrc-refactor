@@ -21,7 +21,7 @@ target_compile_definitions(RenderCore_Optix7NRC PRIVATE
 # TODO: separate debug & release
 if (OPTION_CUDA_DEBUG_FULL)
     target_compile_options(RenderCore_Optix7NRC PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:"-G">
+        $<$<COMPILE_LANGUAGE:CUDA>:-G>
     )
 endif()
 
