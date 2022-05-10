@@ -73,7 +73,6 @@ void shadeKernel( float4* accumulator, const uint stride,
 	uint data = __float_as_uint( O4.w ); // prob.density of the last sampled dir, postponed because of MIS
 	const float3 D = make_float3( D4 );
 	float3 throughput = make_float3( T4 );
-	const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
 	const uint pathIdx = PATHIDX;
 	const uint pixelIdx = pathIdx % (w * h);
 	const uint sampleIdx = pathIdx / (w * h) + pass;
@@ -92,6 +91,8 @@ void shadeKernel( float4* accumulator, const uint stride,
 		accumulator[pixelIdx] += make_float4( contribution, 0 );
 		return;
 	}
+
+	const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
 
 	// object picking
 	if (pixelIdx == probePixelIdx && pathLength == 1)

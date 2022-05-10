@@ -26,6 +26,7 @@ LH2_DEVFUNC float2 toSphericalCoord(const float3& v)
 }
 
 // Uses the naive ray tracing
+// NOTE: our pathLength starts from 0, as is opposed to shadeKernel
 template <bool trainSkybox>
 __global__ void shadeTrainKernel(
     TrainPathState* trainPathStates, const uint pathCount,
@@ -137,7 +138,7 @@ __global__ void shadeTrainKernel(
 	if (sampleIdx < 64) {
 		const uint x = ((pathIdx % w) + (shift & 127)) & 127;
 		const uint y = ((pathIdx / w) + (shift >> 24)) & 127;
-		r4 = blueNoiseSampler4( blueNoise, x, y, sampleIdx, 4 * pathLength - 4 );
+		r4 = blueNoiseSampler4( blueNoise, x, y, sampleIdx, 4 * pathLength );
 	} else {
 		r4.x = RandomFloat( seed ), r4.y = RandomFloat( seed );
 		r4.z = RandomFloat( seed ), r4.w = RandomFloat( seed );
@@ -174,7 +175,7 @@ __global__ void shadeTrainKernel(
     }
 
     // cap at maxium path length
-	if (pathLength == NRC_MAX_TRAIN_PATHLENGTH) {
+	if (pathLength == NRC_MAX_TRAIN_PATHLENGTH - 1) {
         comp.traceFlags |= NRC_TRACEFLAG_PATHLEN_TRUNCTUATE;
         traceBuf[pathIdx].traceComponent[pathLength] = comp;
         return;
