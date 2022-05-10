@@ -1168,6 +1168,10 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return std::to_string(nrcNumInitialTrainingRays);
 	} else if (!strcmp(name, "samplesTaken")) {
 		return std::to_string(samplesTaken);
+	} else if (!strcmp(name, "lastLoss")) {
+		return std::to_string(lastLoss);
+	} else if (!strcmp(name, "lastProcessedRays")) {
+		return std::to_string(lastProcessedRays);
 	}
 
 	return "";
@@ -1351,8 +1355,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 
 	// train
 	int trainBatchSize = nrcNumInitialTrainingRays;
-	//int rayProcessed = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
-	//float loss = nrcNet->Train(256, 1);
+	lastProcessedRays = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
+	lastLoss = nrcNet->Train(256, 1);
 
 	CHK_CUDA(cudaDeviceSynchronize());
 

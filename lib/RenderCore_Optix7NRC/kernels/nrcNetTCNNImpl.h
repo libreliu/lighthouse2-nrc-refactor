@@ -1,6 +1,10 @@
 #include "../nrcNetTCNN.h"
 #include <cassert>
 
+// Sif: Size in float
+const uint tcnnInputSif = sizeof(NRCTinyCudaNN::TCNNTrainInput) / sizeof(float);
+const uint tcnnTargetSif = 3;
+
 __global__ void NRCTCNN_TraceBufToTrainBuffer(
     const NRCTraceBuf* trainTraceBuffer,
     uint uniIdxEnd,
@@ -26,7 +30,7 @@ __global__ void NRCTCNN_TraceBufToTrainBuffer(
     }
 
     const uint slotIdx = atomicAdd(numPreparedRays, 1);
-    NRCTinyCudaNN::TCNNTrainInput &tInput = *(NRCTinyCudaNN::TCNNTrainInput*)(&trainInputCM[64 * slotIdx]);
+    NRCTinyCudaNN::TCNNTrainInput &tInput = *(NRCTinyCudaNN::TCNNTrainInput*)(&trainInputCM[tcnnInputSif * slotIdx]);
 
     // -- fill train input struct --
     tInput.rayIsect = comp.rayIsect;
@@ -58,12 +62,12 @@ __global__ void NRCTCNN_GenTrainBatchFromTrainInput(
         return;
     }
 
-    for (int i = 0; i < 64; i++) {
-        trainInputBatchCM[jobIndex * 64 + i] = trainInputCM[(startIdx + jobIndex) * 64 + i];
+    for (int i = 0; i < tcnnInputSif; i++) {
+        trainInputBatchCM[jobIndex * tcnnInputSif + i] = trainInputCM[(startIdx + jobIndex) * tcnnInputSif + i];
     }
 
-    for (int i = 0; i < 3; i++) {
-        trainTargetBatchCM[jobIndex * 3 + i] = trainTargetCM[(startIdx + jobIndex) * 3 + i];
+    for (int i = 0; i < tcnnTargetSif; i++) {
+        trainTargetBatchCM[jobIndex * tcnnTargetSif + i] = trainTargetCM[(startIdx + jobIndex) * tcnnTargetSif + i];
     }
 }
 
@@ -139,7 +143,7 @@ uint NRCTinyCudaNN::Preprocess(
         trainInputCM->cols() < totalElements) {
         if (trainInputCM) delete trainInputCM;
         trainInputCM = new tcnn::GPUMatrix<float>(
-            sizeof(TCNNTrainInput) / sizeof(float),
+            tcnnInputSif,
             totalElements
         );
     }
@@ -148,7 +152,7 @@ uint NRCTinyCudaNN::Preprocess(
         trainTargetCM->cols() < totalElements) {
         if (trainTargetCM) delete trainTargetCM;
         trainTargetCM = new tcnn::GPUMatrix<float>(
-            sizeof(TCNNTrainInput) / sizeof(float),
+            tcnnTargetSif,
             totalElements
         );
     }
@@ -180,7 +184,7 @@ float NRCTinyCudaNN::Train(
         trainBatchInputCM->cols() < batchSize) {
         if (trainBatchInputCM) delete trainBatchInputCM;
         trainBatchInputCM = new tcnn::GPUMatrix<float>(
-            sizeof(TCNNTrainInput) / sizeof(float),
+            tcnnInputSif,
             batchSize
         );
     }
@@ -188,12 +192,14 @@ float NRCTinyCudaNN::Train(
     if (trainBatchTargetCM == nullptr ||
         trainBatchTargetCM->cols() < batchSize) {
         if (trainBatchTargetCM) delete trainBatchTargetCM;
-        trainBatchTargetCM = new tcnn::GPUMatrix<float>(3, batchSize);
+        trainBatchTargetCM = new tcnn::GPUMatrix<float>(tcnnTargetSif, batchSize);
     }
 
     int numRaysToTrain = *numPreparedRays->HostPtr();
     int numBatches = numRaysToTrain / batchSize;
     if (numBatches == 0) {
+        printf("[NRC_WARN] no batches are being trained\n");
+        prepared = false;
         return 0.0f;
     }
 

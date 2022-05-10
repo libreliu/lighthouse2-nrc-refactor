@@ -178,6 +178,9 @@ private:
 
 	NRCTinyCudaNN* nrcNet;
 
+	float lastLoss;
+	int lastProcessedRays;
+
 	void InitNRC();
 	void ShutdownNRC();
 	void RenderImplNRCPrimary(const ViewPyramid &view);

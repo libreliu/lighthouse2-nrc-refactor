@@ -18,6 +18,41 @@
 #include <bitset>
 #include <memory>
 
+// Dear ImGui
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
+#include "implot.h"
+
+const int ScrollingBufferMaxSize = 2000;
+
+struct ScrollingBuffer {
+    int MaxSize;
+    int Offset;
+    ImVector<ImVec2> Data;
+    ScrollingBuffer(int max_size = 2000) {
+        MaxSize = max_size;
+        Offset  = 0;
+        Data.reserve(MaxSize);
+    }
+    void AddPoint(float x, float y) {
+        if (Data.size() < MaxSize)
+            Data.push_back(ImVec2(x,y));
+        else {
+            Data[Offset] = ImVec2(x,y);
+            Offset =  (Offset + 1) % MaxSize;
+        }
+    }
+    void Erase() {
+        if (Data.size() > 0) {
+            Data.shrink(0);
+            Offset  = 0;
+        }
+    }
+};
+
+
 struct RenderTarget {
 	std::string rtName;
 	std::unique_ptr<GLTexture> texture;
@@ -33,6 +68,7 @@ enum nrcRenderModeSet {
 	NRC_PRIMARY,
 	NRC_FULL
 } nrcRenderMode;
+int frameRendered = 0;
 bool renderConverge = false;
 
 static RenderAPI* renderer = 0;
@@ -43,13 +79,21 @@ static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
 static bool running = true;
 static std::bitset<1024> keystates;
 
-// Dear ImGui
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
+static ScrollingBuffer lossBuf;
+static ScrollingBuffer processedRayBuf;
 
 #include "main_tools.h"
+
+void setRenderMode() {
+	std::string modeStr;
+	switch (nrcRenderMode) {
+		case ORIGINAL: modeStr = "ORIGINAL"; break;
+		case REFERENCE: modeStr = "REFERENCE"; break;
+		case NRC_PRIMARY: modeStr = "NRC_PRIMARY"; break;
+		case NRC_FULL: modeStr = "NRC_FULL"; break;
+	}
+	renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
+}
 
 //  +-----------------------------------------------------------------------------+
 //  |  PrepareScene                                                               |
@@ -94,6 +138,9 @@ void DrawUI() {
 
 	ImGui::Begin("NRC ExtSetting", 0);
 
+	std::string fRendered = "FrameRendered: " + std::to_string(frameRendered);
+	ImGui::Text(fRendered.c_str());
+
 	std::string hint = "CurrentRT: " + currentRT;
 	ImGui::Text(hint.c_str());
 	if (ImGui::Button("result")) {
@@ -125,14 +172,10 @@ void DrawUI() {
 	ImGui::Separator();
 
 	if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0")) {
-		std::string modeStr;
-		switch (nrcRenderMode) {
-		case ORIGINAL: modeStr = "ORIGINAL"; break;
-		case REFERENCE: modeStr = "REFERENCE"; break;
-		case NRC_PRIMARY: modeStr = "NRC_PRIMARY"; break;
-		case NRC_FULL: modeStr = "NRC_FULL"; break;
-		}
-		renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
+		setRenderMode();
+		frameRendered = 0;
+		lossBuf.Erase();
+		processedRayBuf.Erase();
 	}
 
 	ImGui::Checkbox("Converge", &renderConverge);
@@ -154,6 +197,37 @@ void DrawUI() {
 		renderer->SettingStringExt("nrcNumInitialTrainingRays", rayStr.c_str());
 	}
 
+	ImGui::Separator();
+
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
+		static int history = 10.0f;
+		ImGui::SliderInt("Hist Disp Size", &history, 1, ScrollingBufferMaxSize - 1);
+
+		if (lossBuf.Data.size() > 0 && ImPlot::BeginPlot("##Loss", ImVec2(-1,150))) {
+			ImPlot::SetupAxes(
+				NULL, NULL,
+				ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit
+			);
+			ImPlot::SetupAxisLimits(ImAxis_X1, frameRendered - history, frameRendered, ImGuiCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1);
+			ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL, 0.5f);
+			ImPlot::PlotLine("Loss", &lossBuf.Data[0].x, &lossBuf.Data[0].y, lossBuf.Data.size(), lossBuf.Offset, 2 * sizeof(float));
+			ImPlot::EndPlot();
+		}
+
+		if (processedRayBuf.Data.size() > 0 && ImPlot::BeginPlot("##Rayprocessed", ImVec2(-1,150))) {
+			ImPlot::SetupAxes(
+				NULL, NULL,
+				ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit
+			);
+			ImPlot::SetupAxisLimits(ImAxis_X1, frameRendered - history, frameRendered, ImGuiCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1);
+			ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL, 0.5f);
+			ImPlot::PlotLine("Ray processed", &processedRayBuf.Data[0].x, &processedRayBuf.Data[0].y, processedRayBuf.Data.size(), processedRayBuf.Offset, 2 * sizeof(float));
+			ImPlot::EndPlot();
+		}
+	}
+
 	ImGui::End();
 
 	ImGui::Begin( "Camera parameters", 0 );
@@ -172,6 +246,8 @@ void DrawUI() {
 	ImGui::SliderFloat( "gamma", &renderer->GetCamera()->gamma, 1, 2.5f );
 	ImGui::End();
 
+	ImPlot::ShowDemoWindow();
+
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
 }
@@ -180,11 +256,16 @@ void InitImGui()
 {
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
-	if (!ImGui::CreateContext())
-	{
-		printf( "ImGui::CreateContext failed.\n" );
-		exit( EXIT_FAILURE );
+	if (!ImGui::CreateContext()) {
+		printf("ImGui::CreateContext failed.\n");
+		exit(EXIT_FAILURE);
 	}
+
+	if (!ImPlot::CreateContext()) {
+		printf("ImPlot::CreateContext failed.\n");
+		exit(EXIT_FAILURE);
+	}
+
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	ImGui::StyleColorsDark(); // or ImGui::StyleColorsClassic();
@@ -221,7 +302,9 @@ int main()
 	// initialize auxiliary rendertargets
 	InitAuxRT();
 	// initialize nrc render mode - todo: duplicate apply
-	nrcRenderMode = nrcRenderModeSet::ORIGINAL;
+	// nrcRenderMode = nrcRenderModeSet::ORIGINAL;
+	nrcRenderMode = nrcRenderModeSet::NRC_PRIMARY;
+	setRenderMode();
 	// initialize scene
 	PrepareScene();
 	// set initial window size
@@ -233,6 +316,18 @@ int main()
 		renderer->SynchronizeSceneData();
 		// render
 		renderer->Render( renderConverge ? Converge : Restart );
+		frameRendered++;
+		if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
+			string lastLossStr = renderer->GetSettingStringExt("lastLoss");
+			float lastLoss = std::atof(lastLossStr.c_str());
+
+			string lastProcessedRaysStr = renderer->GetSettingStringExt("lastProcessedRays");
+			int lastProcessedRays = std::atoi(lastProcessedRaysStr.c_str());
+
+			lossBuf.AddPoint(frameRendered, lastLoss);
+			processedRayBuf.AddPoint(frameRendered, lastProcessedRays);
+		}
+
 		// handle user input
 		HandleInput( 0.025f );
 		// minimal rigid animation example
@@ -275,6 +370,7 @@ int main()
 	renderer->Shutdown();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
+	ImPlot::DestroyContext();
 	ImGui::DestroyContext();
 	glfwDestroyWindow( window );
 	glfwTerminate();
