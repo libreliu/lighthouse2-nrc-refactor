@@ -155,7 +155,8 @@ private:
 	cudaEvent_t shadowStart, shadowEnd;
 
 	// == NRC Added ==
-	uint nrcNumInitialTrainingRays = 256;
+	bool nrcTrainingEnable;
+	uint nrcNumInitialTrainingRays = 1024;
 	enum {
 		ORIGINAL,
 		REFERENCE,
@@ -178,8 +179,8 @@ private:
 
 	NRCTinyCudaNN* nrcNet;
 
-	float lastLoss;
-	int lastProcessedRays;
+	float lastLoss = 0.0f;
+	int lastProcessedRays = 0;
 
 	void InitNRC();
 	void ShutdownNRC();

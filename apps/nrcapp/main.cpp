@@ -31,7 +31,7 @@ struct ScrollingBuffer {
     int MaxSize;
     int Offset;
     ImVector<ImVec2> Data;
-    ScrollingBuffer(int max_size = 2000) {
+    ScrollingBuffer(int max_size = ScrollingBufferMaxSize) {
         MaxSize = max_size;
         Offset  = 0;
         Data.reserve(MaxSize);
@@ -60,6 +60,7 @@ struct RenderTarget {
 };
 
 std::string currentRT;
+bool nrcTrainingEnable = false;
 bool auxRTEnabled;
 int nrcNumInitialTrainingRays = 1;
 enum nrcRenderModeSet {
@@ -184,6 +185,18 @@ void DrawUI() {
 	ImGui::Text("samplesTaken: %s", samplesTaken.c_str());
 
 	ImGui::Separator();
+
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::Button("Reset network")) {
+		renderer->SettingStringExt("nrcResetNet", "uniform");
+	}
+
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::Checkbox("Enable training", &nrcTrainingEnable)) {
+		renderer->SettingStringExt(
+			"nrcTrainingEnable",
+			nrcTrainingEnable ? "true" : "false"
+		);
+	}
+
 	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
 		// value changed, notify
 		if (nrcNumInitialTrainingRays < 1) {
@@ -215,6 +228,10 @@ void DrawUI() {
 			ImPlot::EndPlot();
 		}
 
+		uint lastData = lossBuf.Data.size() < ScrollingBufferMaxSize ? 
+			lossBuf.Data.size() - 1 : (lossBuf.Offset == 0 ? lossBuf.Data.size() - 1 : lossBuf.Offset - 1);
+		ImGui::Text("Loss: %.2f", lossBuf.Data[lastData].y);
+
 		if (processedRayBuf.Data.size() > 0 && ImPlot::BeginPlot("##Rayprocessed", ImVec2(-1,150))) {
 			ImPlot::SetupAxes(
 				NULL, NULL,
@@ -226,6 +243,8 @@ void DrawUI() {
 			ImPlot::PlotLine("Ray processed", &processedRayBuf.Data[0].x, &processedRayBuf.Data[0].y, processedRayBuf.Data.size(), processedRayBuf.Offset, 2 * sizeof(float));
 			ImPlot::EndPlot();
 		}
+
+		ImGui::Text("Ray processed: %.0f", processedRayBuf.Data[lastData].y);
 	}
 
 	ImGui::End();

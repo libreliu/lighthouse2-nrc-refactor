@@ -69,7 +69,7 @@ using namespace lh2core;
 
 #endif
 
-#define NRC_INVALID_FLOAT 1e10
+#define NRC_INVALID_FLOAT -5e2
 #define NRC_INVALID_FLOAT2 make_float2(NRC_INVALID_FLOAT)
 #define NRC_INVALID_FLOAT3 make_float3(NRC_INVALID_FLOAT)
 

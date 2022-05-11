@@ -46,6 +46,12 @@ public:
     CoreBuffer<NRCNetInferenceOutput>* infOutputBuffer
   );
 
+  // Reset network weight
+  enum ResetMode {
+    UNIFORM
+  };
+  void Reset(ResetMode mode);
+
   //using TCNNTrainInput = NRCNetInferenceInput;
   // Added two dummy segs
   struct alignas(sizeof(float) * 4) TCNNTrainInput{
@@ -76,4 +82,7 @@ private:
   tcnn::GPUMatrix<float> *trainInputCM;
   tcnn::GPUMatrix<float> *trainTargetCM;
   CoreBuffer<uint> *numPreparedRays;
+
+  static const int numNeurons = 64;
+  static const int numHiddenLayers = 2;
 };

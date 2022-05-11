@@ -1156,6 +1156,19 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		} else if (!strcmp(value, "NRC_FULL")) {
 			renderMode = NRC_FULL;
 		}
+		return true;
+	} else if (!strcmp(name, "nrcTrainingEnable")) {
+		if (!strcmp(value, "true")) {
+			nrcTrainingEnable = true;
+		} else if (!strcmp(value, "false")) {
+			nrcTrainingEnable = false;
+		}
+		return true;
+	} else if (!strcmp(name, "nrcResetNet")) {
+		if (!strcmp(value, "uniform")) {
+			nrcNet->Reset(NRCTinyCudaNN::ResetMode::UNIFORM);
+		}
+		return true;
 	}
 	return false;
 }
@@ -1354,9 +1367,12 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	}
 
 	// train
-	int trainBatchSize = nrcNumInitialTrainingRays;
-	lastProcessedRays = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
-	lastLoss = nrcNet->Train(256, 1);
+	if (nrcTrainingEnable) {
+		int trainBatchSize = nrcNumInitialTrainingRays;
+		lastProcessedRays = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
+		lastLoss = nrcNet->Train(256, 1);
+	}
+
 
 	CHK_CUDA(cudaDeviceSynchronize());
 

@@ -1,5 +1,6 @@
 #include "../nrcNetTCNN.h"
 #include <cassert>
+#include <random>
 
 // Sif: Size in float
 const uint tcnnInputSif = sizeof(NRCTinyCudaNN::TCNNTrainInput) / sizeof(float);
@@ -81,7 +82,9 @@ void NRCTinyCudaNN::Init() {
             {"otype", "RelativeL2Luminance"}
         }},
         {"optimizer", {
+            // Moments might be nan, difficult to recover
             {"otype", "Adam"},
+            // {"otype", "SGD"},
             {"learning_rate", 1e-3},
         }},
         {"encoding", {
@@ -113,8 +116,8 @@ void NRCTinyCudaNN::Init() {
             // {"otype", "CutlassMLP"},
             {"activation", "ReLU"},
             {"output_activation", "None"},
-            {"n_neurons", 64},
-            {"n_hidden_layers", 2},
+            {"n_neurons", numNeurons},
+            {"n_hidden_layers", numHiddenLayers},
         }},
     };
 
@@ -217,6 +220,28 @@ float NRCTinyCudaNN::Train(
                 trainBatchTargetCM->data()
             );
 
+            // visualize
+            /*std::vector<float> vVis(batchSize * tcnnInputSif);
+            CHK_CUDA(cudaMemcpy(vVis.data(), trainBatchInputCM->data(), batchSize * tcnnInputSif, cudaMemcpyDeviceToHost));
+
+            for (int row = 0; row < tcnnInputSif; row++) {
+                for (int col = 0; col < batchSize; col++) {
+                    printf("%f ", vVis[col * tcnnInputSif + row]);
+                }
+                printf("\n");
+            }
+
+            printf("==============\n");
+            std::vector<float> vVis2(batchSize * tcnnTargetSif);
+            CHK_CUDA(cudaMemcpy(vVis2.data(), trainBatchInputCM->data(), batchSize * tcnnTargetSif, cudaMemcpyDeviceToHost));
+
+            for (int row = 0; row < tcnnTargetSif; row++) {
+                for (int col = 0; col < batchSize; col++) {
+                    printf("%f ", vVis2[col * tcnnTargetSif + row]);
+                }
+                printf("\n");
+            }*/
+
             auto ctx = model->trainer->training_step(*trainBatchInputCM, *trainBatchTargetCM);
             avgLoss += model->trainer->loss(*ctx) * (1.0f / numTrainingSteps);
         }
@@ -240,6 +265,29 @@ void NRCTinyCudaNN::Inference(
     tcnn::GPUMatrix<float> infOutputCM((float*)infOutputBuffer->DevPtr(), 3u, numInfRays);
 
     model->network->inference(infInputCM, infOutputCM);
+}
+
+void NRCTinyCudaNN::Reset(ResetMode mode) {
+    // output 3 is padded to 16
+    size_t numParams = numNeurons * numNeurons * numHiddenLayers + numNeurons * 16;
+    std::vector<float> paramsCPU(numParams);
+
+    if (mode == UNIFORM) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> distrib(-1, 1);
+
+        for (int i = 0; i < numParams; i++) {
+            paramsCPU[i] = distrib(gen);
+        }
+    }
+
+    CHK_CUDA(cudaDeviceSynchronize());
+
+    model->trainer->set_params_full_precision(paramsCPU.data(), numParams);
+    
+    // TODO: reset optimizer
+    //model->optimizer->
 }
 
 void NRCTinyCudaNN::Destroy() {
