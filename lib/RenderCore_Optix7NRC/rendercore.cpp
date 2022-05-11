@@ -376,6 +376,30 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 		params.accumulator = accumulator->DevPtr();
 		params.hitData = hitBuffer->DevPtr();
 		params.pathStates = pathStateBuffer->DevPtr();
+
+		// NRC inference pathState & connState buffer
+		// set params later
+		for (int i = 0; i < 2; i++) {
+			if (infPathStateBuffer[i]) {
+				delete infPathStateBuffer[i];
+			}
+			infPathStateBuffer[i] = new CoreBuffer<InferencePathState>(
+				maxPixels * scrspp,
+				ON_DEVICE
+			);
+		}
+
+		{
+			if (infConnStateBuffer) {
+				delete infConnStateBuffer;
+			}
+
+			infConnStateBuffer = new CoreBuffer<InferenceConnState>(
+				maxPixels * scrspp,
+				ON_DEVICE
+			);
+		}
+
 		printf( "buffers resized for %i pixels @ %i samples.\n", maxPixels, scrspp );
 	}
 	// clear the accumulator
@@ -1275,6 +1299,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	params.bvhRoot = bvhRoot;
 	params.trainPathStates = trainPathStateBuffer[0]->DevPtr();
 	params.trainConnStates = trainConnStateBuffer->DevPtr();
+	params.infConnStates = infConnStateBuffer->DevPtr();
+	params.infPathStates = infPathStateBuffer[0]->DevPtr();
 	params.trainTraces = trainTraceBuffer->DevPtr();
 	params.pathLength = 0; /* NOTICE THIS; TODO: add separate? */
 
@@ -1373,8 +1399,11 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		lastLoss = nrcNet->Train(256, 1);
 	}
 
-
 	CHK_CUDA(cudaDeviceSynchronize());
+
+	// inference
+
+
 
 	// 2.x validation
 

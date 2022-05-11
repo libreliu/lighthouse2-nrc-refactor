@@ -174,8 +174,10 @@ private:
 	// front & back buffer
 	CoreBuffer<TrainPathState>* trainPathStateBuffer[2];
 	CoreBuffer<TrainConnectionState>* trainConnStateBuffer;
-	
 	CoreBuffer<NRCTraceBuf>* trainTraceBuffer;
+
+	CoreBuffer<InferencePathState>* infPathStateBuffer[2] = {nullptr, nullptr};
+	CoreBuffer<InferenceConnState>* infConnStateBuffer = nullptr;
 
 	NRCTinyCudaNN* nrcNet;
 

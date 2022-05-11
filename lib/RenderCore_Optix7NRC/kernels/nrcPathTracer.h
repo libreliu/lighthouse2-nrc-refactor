@@ -247,6 +247,96 @@ __host__ void shadeTrain(
     );
 }
 
+__global__ void shadeNRCOnlyKernel(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+) {
+    // respect boundaries
+	int jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+	if (jobIndex >= pathCount) return;
+
+    const float4 hitData = hits[jobIndex];
+    const InferencePathState& ipState = pathStates[jobIndex];
+    const float3 O = ipState.O;
+    uint flags = ipState.flags;
+    const float3 D = ipState.D;
+    const uint pathIdx = ipState.pathIdx;
+    //const float3 throughput = ipState.throughput;
+    const uint pixelIdx = ipState.pixelIdx;
+    const uint sampleIdx = pass;
+
+    if (PRIMIDX == NOHIT) {
+        float3 tD = -worldToSky.TransformVector( D );
+		float3 skyPixel = flags & S_BOUNCED ? SampleSmallSkydome( tD ) : SampleSkydome( tD );
+		float3 contribution = throughput * skyPixel * (1.0f / bsdfPdf);
+		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
+        FIXNAN_FLOAT3( contribution );
+
+        accumulator[pixelIdx] += make_float4( contribution, 0 );
+		return;
+    }
+
+    // Look up the net
+	ShadingData shadingData;
+	float3 N, iN, fN, T;
+	const float3 I = RAY_O + HIT_T * D;
+	const float coneWidth = spreadAngle * HIT_T;
+	GetShadingData( D, HIT_U, HIT_V, coneWidth, instanceTriangles[PRIMIDX], INSTANCEIDX, shadingData, N, iN, fN, T );
+	uint seed = WangHash( pathIdx * 17 + R0 /* well-seeded xor32 is all you need */ );
+
+    const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
+
+    NRCTinyCudaNN::NRCNetInferenceInput &iInput = &inferenceInput[infIdx];
+    
+    iInput.rayIsect = I;
+    iInput.roughness = ROUGHNESS;
+    iInput.rayDir = toSphericalCoord(D);
+    iInput.normalDir = toSphericalCoord(fN);
+    iInput.diffuseRefl = shadingData.color;
+    iInput.specularRefl = shadingData.color;  // TODO: figure out
+    iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+    inferencePixelIndices[infIdx] = pixelIdx;
+    inferencePixelContribs[infIdx] = make_float3(1.0f, 1.0f, 1.0f);
+}
+
+__host__ void shadeNRCOnly(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+) {
+    const dim3 gridDim( NEXTMULTIPLEOF( pathCount, 128 ) / 128, 1 );
+    shadeNRCOnlyKernel <<<gridDim.x, 128>>> (
+        accumulator,
+        pathStates, pathCount,
+        nextPathStates,
+        hits,
+        connections,
+        R0, shift, blueNoise, pass,
+        pathLength, w, h, spreadAngle,
+        numRaysToBeInferenced,
+        inferenceInput,
+        inferencePixelIndices,
+        inferencePixelContribs
+    );
+}
 
 #undef S_SPECULAR
 #undef S_BOUNCED

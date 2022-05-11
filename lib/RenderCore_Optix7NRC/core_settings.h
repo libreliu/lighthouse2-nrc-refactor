@@ -117,6 +117,8 @@ struct alignas(sizeof(float) * 4) TrainPathState
 	// float2 dummy;
 };
 
+using InferencePathState = TrainPathState;
+
 struct alignas(sizeof(float) * 4) TrainConnectionState
 {
 	float3 O;
@@ -126,6 +128,8 @@ struct alignas(sizeof(float) * 4) TrainConnectionState
 	float3 directLum;
 	int pixelIdx;
 };
+
+using InferenceConnState = TrainConnectionState;
 
 struct alignas(sizeof(float) * 4) NRCNetInferenceInput
 {
@@ -249,6 +253,8 @@ struct Params
 	// -- NRC added --
 	TrainPathState* trainPathStates;
 	TrainConnectionState* trainConnStates;
+	InferencePathState* infPathStates;
+	InferenceConnState* infConnStates;
 	NRCTraceBuf* trainTraces;
 	uint pathLength;
 };
