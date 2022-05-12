@@ -47,10 +47,8 @@ public:
   );
 
   // Reset network weight
-  enum ResetMode {
-    UNIFORM
-  };
-  void Reset(ResetMode mode);
+  // NRCNET_RESETMODE_UNIFORM
+  void Reset(int mode);
 
   //using TCNNTrainInput = NRCNetInferenceInput;
   // Added two dummy segs

@@ -261,18 +261,18 @@ void NRCTinyCudaNN::Inference(
     assert(initialized);
 
     // NOTE: THIS ASSERTS DUMMY ENTRY PRESENT, OR conversion shall be applied
-    tcnn::GPUMatrix<float> infInputCM((float*)infInputBuffer->DevPtr(), 64u, numInfRays);
+    tcnn::GPUMatrix<float> infInputCM((float*)infInputBuffer->DevPtr(), 16u, numInfRays);
     tcnn::GPUMatrix<float> infOutputCM((float*)infOutputBuffer->DevPtr(), 3u, numInfRays);
 
     model->network->inference(infInputCM, infOutputCM);
 }
 
-void NRCTinyCudaNN::Reset(ResetMode mode) {
+void NRCTinyCudaNN::Reset(int mode) {
     // output 3 is padded to 16
     size_t numParams = numNeurons * numNeurons * numHiddenLayers + numNeurons * 16;
     std::vector<float> paramsCPU(numParams);
 
-    if (mode == UNIFORM) {
+    if (mode == NRCNET_RESETMODE_UNIFORM) {
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_real_distribution<float> distrib(-1, 1);

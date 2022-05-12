@@ -223,6 +223,44 @@ __device__ void generateNRCShadowRay(const uint jobIndex, const uint stride) {
 	}
 }
 
+
+__device__ void setupInfPrimaryRay( const uint pathIdx, const uint stride )
+{
+	const uint pixelIdx = pathIdx % (params.scrsize.x * params.scrsize.y);
+	// printf("%d: %f %f %d (stride=%d)\n", pathIdx, xf, yf, pixelIdx, stride);
+
+	const uint sampleIdx = pathIdx / (params.scrsize.x * params.scrsize.y) + params.pass;
+	uint seed = WangHash( pathIdx * 16789 + params.pass * 1791 );
+	// generate eye ray
+	float3 O, D;
+	generateEyeRay( O, D, pixelIdx, sampleIdx, seed );
+
+	InferencePathState *ipState = &params.infPathStates[pathIdx];
+
+	ipState->O = O;
+	// TODO: figure out if this is needed
+	ipState->flags = 1; /* S_SPECULAR in CUDA code */
+	ipState->D = D;
+	// ipState->throughput = make_float3(0.0f, 0.0f, 0.0f);
+	ipState->pathIdx = pathIdx;
+	ipState->pixelIdx = pixelIdx;
+
+	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
+	optixTrace( params.bvhRoot, O, D, params.geometryEpsilon, 1e34f, 0.0f /* ray time */,
+		OptixVisibilityMask( 1 ), OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3 );
+	
+	//printf("%d: u2=%d\n", pathIdx, u2);
+	if (pixelIdx < stride && u2 != 0xffffffff) {
+		params.hitData[pathIdx] = make_float4(
+			__uint_as_float( u0 ),
+			__uint_as_float( u1 ),
+			__uint_as_float( u2 ),
+			__uint_as_float( u3 )
+		);
+	}
+}
+
+
 extern "C" __global__ void __raygen__rg()
 {
 	const uint stride = params.scrsize.x * params.scrsize.y * params.scrsize.z;
@@ -239,6 +277,8 @@ extern "C" __global__ void __raygen__rg()
 	case Params::SPAWN_NRC_PRIMARY_UNIFORM: setupNRCPrimaryRayUniform(trainRayIdx, stride); break;
 	case Params::SPAWN_NRC_SECONDARY: break;
 	case Params::SPAWN_NRC_SHADOW: generateNRCShadowRay(rayIdx, stride); break;
+	case Params::SPAWN_INF_PRIMARY: setupInfPrimaryRay(rayIdx, stride); break;
+	// TODO: INF_SECONDARY, INF_SHADOW
 	}
 }
 

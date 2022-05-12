@@ -28,6 +28,8 @@
 // nrc settings
 #define NRC_MAX_TRAIN_PATHLENGTH 3
 
+#define NRCNET_RESETMODE_UNIFORM 0
+
 // low-level settings
 #define BLUENOISE			// use blue noise instead of uniform random numbers
 #define BILINEAR			// enable bilinear interpolation
@@ -235,7 +237,10 @@ struct Params
 		SPAWN_NRC_PRIMARY_UNIFORM,	// Use uniform sampler
 		SPAWN_NRC_PRIMARY_HILTON,	// Use Hilton sampler
 		SPAWN_NRC_SECONDARY,
-		SPAWN_NRC_SHADOW
+		SPAWN_NRC_SHADOW,
+		SPAWN_INF_PRIMARY,
+		SPAWN_INF_SECONDARY,
+		SPAWN_INF_SHADOW
 	};
 	float4 posLensSize;
 	float3 right, up, p1;

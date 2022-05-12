@@ -265,19 +265,20 @@ __global__ void shadeNRCOnlyKernel(
 	if (jobIndex >= pathCount) return;
 
     const float4 hitData = hits[jobIndex];
+
     const InferencePathState& ipState = pathStates[jobIndex];
     const float3 O = ipState.O;
     uint flags = ipState.flags;
     const float3 D = ipState.D;
     const uint pathIdx = ipState.pathIdx;
-    //const float3 throughput = ipState.throughput;
+    const float3 throughput = pathLength == 0 ? make_float3(1.0f) : ipState.throughput;
     const uint pixelIdx = ipState.pixelIdx;
     const uint sampleIdx = pass;
 
     if (PRIMIDX == NOHIT) {
         float3 tD = -worldToSky.TransformVector( D );
 		float3 skyPixel = flags & S_BOUNCED ? SampleSmallSkydome( tD ) : SampleSkydome( tD );
-		float3 contribution = throughput * skyPixel * (1.0f / bsdfPdf);
+		float3 contribution = throughput * skyPixel;
 		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
         FIXNAN_FLOAT3( contribution );
 
@@ -285,17 +286,19 @@ __global__ void shadeNRCOnlyKernel(
 		return;
     }
 
+    const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
+
     // Look up the net
 	ShadingData shadingData;
 	float3 N, iN, fN, T;
-	const float3 I = RAY_O + HIT_T * D;
+	const float3 I = O + HIT_T * D;
 	const float coneWidth = spreadAngle * HIT_T;
 	GetShadingData( D, HIT_U, HIT_V, coneWidth, instanceTriangles[PRIMIDX], INSTANCEIDX, shadingData, N, iN, fN, T );
 	uint seed = WangHash( pathIdx * 17 + R0 /* well-seeded xor32 is all you need */ );
 
     const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
 
-    NRCTinyCudaNN::NRCNetInferenceInput &iInput = &inferenceInput[infIdx];
+    NRCNetInferenceInput &iInput = inferenceInput[infIdx];
     
     iInput.rayIsect = I;
     iInput.roughness = ROUGHNESS;
@@ -335,6 +338,42 @@ __host__ void shadeNRCOnly(
         inferenceInput,
         inferencePixelIndices,
         inferencePixelContribs
+    );
+}
+
+
+__global__ void nrcContribAdd_Kernel(
+    float4* accumulator,
+    const uint numInferenceRays,
+    const NRCNetInferenceOutput* infOutput,
+    const uint* infPixelIndices,
+    const float3* infPixelContribs
+) {
+    uint jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if (jobIndex >= numInferenceRays) {
+        return;
+    }
+
+    accumulator[infPixelIndices[jobIndex]] += make_float4(
+        infOutput[jobIndex].lumOutput * infPixelContribs[jobIndex],
+        0.0f
+    );
+}
+
+__host__ void nrcContribAdd(
+    float4* accumulator,
+    const uint numInferenceRays,
+    const NRCNetInferenceOutput *infOutput,
+    const uint* infPixelIndices,
+    const float3* infPixelContribs
+) {
+    nrcContribAdd_Kernel <<< NEXTMULTIPLEOF(numInferenceRays, 32) / 32, 32 >>> (
+        accumulator,
+        numInferenceRays,
+        infOutput,
+        infPixelIndices,
+        infPixelContribs
     );
 }
 

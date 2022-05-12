@@ -170,6 +170,8 @@ private:
 	} nrcTrainingRaysSampler = UNIFORM;
 	AuxRTMgr auxRTMgr;
 	CUdeviceptr nrcParamsPrimary, nrcParamsSecondary, nrcParamsShadow;
+	CUdeviceptr infParamsPrimary, infParamsSecondary, infParamsShadow;
+	CoreBuffer<int> *numInferenceRays;
 
 	// front & back buffer
 	CoreBuffer<TrainPathState>* trainPathStateBuffer[2];
@@ -178,6 +180,10 @@ private:
 
 	CoreBuffer<InferencePathState>* infPathStateBuffer[2] = {nullptr, nullptr};
 	CoreBuffer<InferenceConnState>* infConnStateBuffer = nullptr;
+	CoreBuffer<NRCNetInferenceInput>* infInputBuffer = nullptr;
+	CoreBuffer<NRCNetInferenceOutput>* infOutputBuffer = nullptr;
+	CoreBuffer<uint>* infPixelIndices = nullptr;
+	CoreBuffer<float3>* infPixelContribs = nullptr;
 
 	NRCTinyCudaNN* nrcNet;
 

@@ -67,6 +67,28 @@ void shadeTrain(
 	const int pathLength, const int w, const int h, const float spreadAngle
 );
 
+void shadeNRCOnly(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+);
+
+void nrcContribAdd(
+    float4* accumulator,
+    const uint numInferenceRays,
+    const NRCNetInferenceOutput *infOutput,
+    const uint* infPixelIndices,
+    const float3* infPixelContribs
+);
+
 void traceBufPrimaryDiffuseReflVisualize(
     const NRCTraceBuf* traceBuf, const uint numTrainingRays,
     float4* debugRT, const uint w, const uint h,
@@ -396,6 +418,50 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 
 			infConnStateBuffer = new CoreBuffer<InferenceConnState>(
 				maxPixels * scrspp,
+				ON_DEVICE
+			);
+		}
+
+		{
+			if (infInputBuffer) {
+				delete infInputBuffer;
+			}
+
+			infInputBuffer = new CoreBuffer<NRCNetInferenceInput>(
+				maxPixels * scrspp * 2,
+				ON_DEVICE
+			);
+		}
+
+		{
+			if (infOutputBuffer) {
+				delete infOutputBuffer;
+			}
+
+			infOutputBuffer = new CoreBuffer<NRCNetInferenceOutput>(
+				maxPixels * scrspp * 2,
+				ON_DEVICE
+			);
+		}
+
+		{
+			if (infPixelIndices) {
+				delete infPixelIndices;
+			}
+
+			infPixelIndices = new CoreBuffer<uint>(
+				maxPixels * scrspp * 2,
+				ON_DEVICE
+			);
+		}
+
+		{
+			if (infPixelContribs) {
+				delete infPixelContribs;
+			}
+
+			infPixelContribs = new CoreBuffer<float3>(
+				maxPixels * scrspp * 2,
 				ON_DEVICE
 			);
 		}
@@ -1190,7 +1256,7 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		return true;
 	} else if (!strcmp(name, "nrcResetNet")) {
 		if (!strcmp(value, "uniform")) {
-			nrcNet->Reset(NRCTinyCudaNN::ResetMode::UNIFORM);
+			nrcNet->Reset(NRCNET_RESETMODE_UNIFORM);
 		}
 		return true;
 	}
@@ -1239,6 +1305,11 @@ void RenderCore::InitNRC() {
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsPrimary), sizeof(Params)));
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsSecondary), sizeof(Params)));
 	CHK_CUDA(cudaMalloc((void**)(&nrcParamsShadow), sizeof(Params)));
+	CHK_CUDA(cudaMalloc((void**)(&infParamsPrimary), sizeof(Params)));
+	CHK_CUDA(cudaMalloc((void**)(&infParamsSecondary), sizeof(Params)));
+	CHK_CUDA(cudaMalloc((void**)(&infParamsShadow), sizeof(Params)));
+	
+	numInferenceRays = new CoreBuffer<int>(1, ON_DEVICE | ON_HOST);
 
 	for (int i = 0; i < 2; i++) {
 		trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
@@ -1275,6 +1346,7 @@ void RenderCore::ShutdownNRC() {
 
 	if (trainConnStateBuffer) delete trainConnStateBuffer;
 	if (trainTraceBuffer) delete trainTraceBuffer;
+	// TODO: free
 }
 
 void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
@@ -1282,7 +1354,8 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 
 	// update acceleration structure
 	UpdateToplevel();
-
+	
+	if (samplesTaken == 0) accumulator->Clear( ON_DEVICE );
 	trainTraceBuffer->Clear(ON_DEVICE);
 
 	// 1. Primary with Sobel 2D sampling for screen output
@@ -1317,6 +1390,12 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 	cudaMemcpyAsync((void*)nrcParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
 	params.phase = Params::SPAWN_NRC_SECONDARY;
 	cudaMemcpyAsync((void*)nrcParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_INF_PRIMARY;
+	cudaMemcpyAsync((void*)infParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_INF_SECONDARY;
+	cudaMemcpyAsync((void*)infParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_INF_SHADOW;
+	cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
 
 	CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, nrcNumInitialTrainingRays, 1, 1 ) );	
 
@@ -1401,9 +1480,40 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 
 	CHK_CUDA(cudaDeviceSynchronize());
 
-	// inference
+	// shade
+	uint pathCount = scrwidth * scrheight * scrspp;
+	InitCountersForExtend(pathCount);
 
+	CHK_OPTIX(optixLaunch(pipeline, 0, infParamsPrimary, sizeof(Params), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1));
 
+	// shade & emit
+	numInferenceRays->Clear(ON_DEVICE | ON_HOST);
+	shadeNRCOnly(
+		accumulator->DevPtr(),
+		infPathStateBuffer[0]->DevPtr(), pathCount,
+		infPathStateBuffer[1]->DevPtr(),
+		hitBuffer->DevPtr(),
+		infConnStateBuffer->DevPtr(),
+		RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken,
+		0, scrwidth, scrheight, view.spreadAngle,
+		numInferenceRays->DevPtr(),
+		infInputBuffer->DevPtr(),
+		infPixelIndices->DevPtr(),
+		infPixelContribs->DevPtr()
+	);
+
+	// do inference
+	numInferenceRays->CopyToHost();
+	nrcNet->Inference(infInputBuffer, *numInferenceRays->HostPtr(), infOutputBuffer);
+
+	// emit inference
+	nrcContribAdd(
+		accumulator->DevPtr(),
+		*numInferenceRays->HostPtr(),
+		infOutputBuffer->DevPtr(),
+		infPixelIndices->DevPtr(),
+		infPixelContribs->DevPtr()
+	);
 
 	// 2.x validation
 
