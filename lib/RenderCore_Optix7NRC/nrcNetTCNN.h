@@ -82,5 +82,5 @@ private:
   CoreBuffer<uint> *numPreparedRays;
 
   static const int numNeurons = 64;
-  static const int numHiddenLayers = 2;
+  static const int numHiddenLayers = 5;
 };

@@ -79,7 +79,8 @@ void NRCTinyCudaNN::Init() {
 
     nlohmann::json config = {
         {"loss", {
-            {"otype", "RelativeL2Luminance"}
+            {"otype", "L2"}
+            // {"otype", "RelativeL2Luminance"}
         }},
         {"optimizer", {
             // Moments might be nan, difficult to recover

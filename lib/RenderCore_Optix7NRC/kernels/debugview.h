@@ -191,3 +191,50 @@ __host__ void traceBufPrimaryLumOutputVisualize(
         traceBuf
     );
 }
+
+__device__ bool infInputBufIterator(
+    uint jobIndex, float3& worldPos, float3& color,
+    const NRCNetInferenceInput* infInputBuf,
+    const uint* infIndicesBuf
+) {
+    const uint pixelIdx = infIndicesBuf[jobIndex];
+    worldPos = infInputBuf[jobIndex].rayIsect;
+    // color = infInputBuf[jobIndex].diffuseRefl;
+    color = make_float3((float)(pixelIdx % 255) / 255);
+}
+
+__device__ bool infOutputBufIterator(
+    uint jobIndex, float3& worldPos, float3& color,
+    const NRCNetInferenceInput* infInputBuf,
+    const uint* infIndicesBuf,
+    const NRCNetInferenceOutput* infOutputBuf
+) {
+    worldPos = infInputBuf[jobIndex].rayIsect;
+    color = infOutputBuf[jobIndex].lumOutput;
+}
+
+__host__ void inferenceInputBufferVisuailze(
+    const NRCNetInferenceInput* infInputBuf, const uint* infIndicesBuf,
+    const uint numInferenceRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    worldPosVisualize<infInputBufIterator, 0>(
+        numInferenceRays, debugRT, w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+        infInputBuf, infIndicesBuf
+    );
+}
+
+__host__ void inferenceOutputBufferVisuailze(
+    const NRCNetInferenceInput* infInputBuf, const uint* infIndicesBuf,
+    const NRCNetInferenceOutput* infOutputBuf, const uint numInferenceRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    worldPosVisualize<infOutputBufIterator, 0>(
+        numInferenceRays, debugRT, w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+        infInputBuf, infIndicesBuf, infOutputBuf
+    );
+}

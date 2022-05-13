@@ -49,6 +49,20 @@ void pathStateIntersectionVisualize(
     const float3 viewP1, const float3 viewP2, const float3 viewP3,
     const float3 viewPos, const float distortion
 );
+void inferenceInputBufferVisuailze(
+	const NRCNetInferenceInput* infInputBuf, const uint* infIndicesBuf,
+	const uint numInferenceRays,
+	float4* debugRT, const uint w, const uint h,
+	const float3 viewP1, const float3 viewP2, const float3 viewP3,
+	const float3 viewPos, const float distortion
+);
+void inferenceOutputBufferVisuailze(
+    const NRCNetInferenceInput* infInputBuf, const uint* infIndicesBuf,
+    const NRCNetInferenceOutput* infOutputBuf, const uint numInferenceRays,
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+);
 
 void shadeRef(
 	const int pathCount, float4* accumulator, const uint stride,
@@ -1336,6 +1350,8 @@ void RenderCore::InitNRC() {
 	auxRTMgr.RegisterRT("pathStateIsect");
 	auxRTMgr.RegisterRT("traceBufPrimaryDRefl");
 	auxRTMgr.RegisterRT("traceBufPrimaryLOut");
+	auxRTMgr.RegisterRT("infInputBuffer");
+	auxRTMgr.RegisterRT("infOutputBuffer");
 }
 
 void RenderCore::ShutdownNRC() {
@@ -1502,18 +1518,47 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		infPixelContribs->DevPtr()
 	);
 
-	// do inference
 	numInferenceRays->CopyToHost();
-	nrcNet->Inference(infInputBuffer, *numInferenceRays->HostPtr(), infOutputBuffer);
 
-	// emit inference
-	nrcContribAdd(
-		accumulator->DevPtr(),
-		*numInferenceRays->HostPtr(),
-		infOutputBuffer->DevPtr(),
-		infPixelIndices->DevPtr(),
-		infPixelContribs->DevPtr()
-	);
+	if (auxRTMgr.isSetupAndInterested("infInputBuffer")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("infInputBuffer");
+		inferenceInputBufferVisuailze(
+			infInputBuffer->DevPtr(), infPixelIndices->DevPtr(), *numInferenceRays->HostPtr(),
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
+
+	// do inference
+	if (*numInferenceRays->HostPtr() > 0) {
+		infOutputBuffer->Clear(ON_DEVICE);
+		nrcNet->Inference(infInputBuffer, *numInferenceRays->HostPtr(), infOutputBuffer);
+		nrcContribAdd(
+			accumulator->DevPtr(),
+			*numInferenceRays->HostPtr(),
+			infOutputBuffer->DevPtr(),
+			infPixelIndices->DevPtr(),
+			infPixelContribs->DevPtr()
+		);
+	}
+
+	if (auxRTMgr.isSetupAndInterested("infOutputBuffer")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("infOutputBuffer");
+		inferenceOutputBufferVisuailze(
+			infInputBuffer->DevPtr(), infPixelIndices->DevPtr(),
+			infOutputBuffer->DevPtr(), *numInferenceRays->HostPtr(),
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
 
 	// 2.x validation
 
