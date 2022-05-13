@@ -1342,7 +1342,8 @@ void RenderCore::InitNRC() {
 		ON_DEVICE
 	);
 
-	nrcNet = new NRCTinyCudaNN();
+	// nrcNet = new NRCTinyCudaNN();
+	nrcNet = new NRCKNN();
 	nrcNet->Init();
 
 	auxRTMgr.RegisterRT("trainPrimaryRay");

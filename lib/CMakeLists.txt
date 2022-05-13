@@ -6,6 +6,7 @@ target_include_directories(Common-Libs INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 set(ENV{TCNN_CUDA_ARCHITECTURES} "75")
 
 # Specific target libraries to build
+add_subdirectory(ann)
 add_subdirectory(tinyxml2)
 add_subdirectory(tinygltf)
 add_subdirectory(tinyobjloader)

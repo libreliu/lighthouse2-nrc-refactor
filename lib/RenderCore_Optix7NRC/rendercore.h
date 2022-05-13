@@ -17,6 +17,7 @@
 
 #include "AuxRTMgr.h"
 #include "nrcNetTCNN.h"
+#include "nrcNetKNN.h"
 
 namespace lh2core
 {
@@ -185,7 +186,8 @@ private:
 	CoreBuffer<uint>* infPixelIndices = nullptr;
 	CoreBuffer<float3>* infPixelContribs = nullptr;
 
-	NRCTinyCudaNN* nrcNet;
+	// NRCTinyCudaNN* nrcNet;
+	NRCKNN* nrcNet;
 
 	float lastLoss = 0.0f;
 	int lastProcessedRays = 0;

@@ -328,7 +328,7 @@ struct CUDAMaterial4
 #define CLAMPINTENSITY
 #endif
 
-#ifndef __CUDACC__
+#if !defined(__CUDACC__) && !defined(NRC_SKIP_RENDERCORE_INCLUDE)
 #define OPTIXU_MATH_DEFINE_IN_NAMESPACE
 #define _USE_MATH_DEFINES
 #include "core_api_base.h"

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "core_settings.h"
 
 #include <memory>

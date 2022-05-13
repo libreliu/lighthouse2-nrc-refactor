@@ -86,35 +86,38 @@ void NRCTinyCudaNN::Init() {
             // Moments might be nan, difficult to recover
             {"otype", "Adam"},
             // {"otype", "SGD"},
-            {"learning_rate", 1e-3},
+            {"learning_rate", 1e-4},
         }},
+        // {"encoding", {
+        //     {"otype", "Composite"},
+        //     {"nested", {
+        //         // Position, rayIsect
+        //         // TriangleWave is way faster than OneBlob
+        //         // (As is described in the paper)
+        //         {
+        //             {"otype", "TriangleWave"}, 
+        //             {"n_frequencies", 12u},
+        //             {"n_dims_to_encode", 3u}
+        //         },
+        //         // Roughness & RayDir & NormalDir
+        //         {
+        //             {"otype", "OneBlob"},
+        //             {"n_bins", 4u},
+        //             {"n_dims_to_encode", 5u}
+        //         },
+        //         // DiffuseRefl & SpecularRefl
+        //         // (6u expected, and 2 dummy)
+        //         {
+        //             {"otype", "Identity"}
+        //         }
+        //     }}
+        // }},
         {"encoding", {
-            {"otype", "Composite"},
-            {"nested", {
-                // Position, rayIsect
-                // TriangleWave is way faster than OneBlob
-                // (As is described in the paper)
-                {
-                    {"otype", "TriangleWave"}, 
-                    {"n_frequencies", 12u},
-                    {"n_dims_to_encode", 3u}
-                },
-                // Roughness & RayDir & NormalDir
-                {
-                    {"otype", "OneBlob"},
-                    {"n_bins", 4u},
-                    {"n_dims_to_encode", 5u}
-                },
-                // DiffuseRefl & SpecularRefl
-                // (6u expected, and 2 dummy)
-                {
-                    {"otype", "Identity"}
-                }
-            }}
+            {"otype", "Identity"}
         }},
         {"network", {
-            {"otype", "FullyFusedMLP"},
-            // {"otype", "CutlassMLP"},
+            // {"otype", "FullyFusedMLP"},
+            {"otype", "CutlassMLP"},
             {"activation", "ReLU"},
             {"output_activation", "None"},
             {"n_neurons", numNeurons},
