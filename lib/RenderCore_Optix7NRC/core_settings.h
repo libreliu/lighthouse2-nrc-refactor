@@ -144,7 +144,8 @@ struct alignas(sizeof(float) * 4) NRCNetInferenceInput
 	float dummies[2];    // TODO: remove this once we fix tiny-cuda-nn; set to 0 before
 };
 
-struct alignas(sizeof(float) * 4) NRCNetInferenceOutput
+// SHOULD BE ALIGNED AS 3 FLOAT
+struct NRCNetInferenceOutput
 {
 	float3 lumOutput;
 };
@@ -163,7 +164,7 @@ __global__ void nrc_check_align_cudacc(float* dummy) {
 	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
 
 	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
-	static_assert(sizeof(NRCNetInferenceOutput) == 4 * sizeof(float), "size unexpected");
+	static_assert(sizeof(NRCNetInferenceOutput) == 3 * sizeof(float), "size unexpected");
 }
 
 #else
@@ -179,7 +180,7 @@ inline void nrc_check_align_hostcc(float* dummy) {
 	);
 	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
 	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
-	static_assert(sizeof(NRCNetInferenceOutput) == 4 * sizeof(float), "size unexpected");
+	static_assert(sizeof(NRCNetInferenceOutput) == 3 * sizeof(float), "size unexpected");
 }
 #endif
 
