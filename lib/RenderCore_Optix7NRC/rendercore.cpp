@@ -232,7 +232,7 @@ void RenderCore::CreateOptixContext( int cc, bool forceRecompile )
 	// create the optix module
 	OptixModuleCompileOptions module_compile_options = {};
 	module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-#ifdef _DEBUG
+#ifdef NRC_OPTIX_DEBUG
 	module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
 	module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #else
@@ -1342,8 +1342,8 @@ void RenderCore::InitNRC() {
 		ON_DEVICE
 	);
 
-	// nrcNet = new NRCTinyCudaNN();
-	nrcNet = new NRCKNN();
+	nrcNet = new NRCTinyCudaNN();
+	// nrcNet = new NRCKNN();
 	nrcNet->Init();
 
 	auxRTMgr.RegisterRT("trainPrimaryRay");

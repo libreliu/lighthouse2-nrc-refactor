@@ -308,6 +308,13 @@ __global__ void shadeNRCOnlyKernel(
     iInput.specularRefl = shadingData.color;  // TODO: figure out
     iInput.dummies[0] = iInput.dummies[1] = 0.0f;
 
+    // iInput.roughness = 0.0f;
+    // iInput.rayDir = make_float2(0.0f);
+    // iInput.normalDir = make_float2(0.0f);
+    // iInput.diffuseRefl = make_float3(0.0f);
+    // iInput.specularRefl = make_float3(0.0f);
+    // iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
     inferencePixelIndices[infIdx] = pixelIdx;
     inferencePixelContribs[infIdx] = make_float3(1.0f, 1.0f, 1.0f);
 }

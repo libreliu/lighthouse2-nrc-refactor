@@ -44,6 +44,13 @@ __global__ void NRCTCNN_TraceBufToTrainBuffer(
     tInput.specularRefl = comp.specularRefl;
     tInput.dummies[0] = tInput.dummies[1] = 0.0f;
 
+    // tInput.roughness = 0.0f;
+    // tInput.rayDir = make_float2(0.0f);
+    // tInput.normalDir = make_float2(0.0f);
+    // tInput.diffuseRefl = make_float3(0.0f);
+    // tInput.specularRefl = make_float3(0.0f);
+    // tInput.dummies[0] = tInput.dummies[1] = 0.0f;
+
     float* tTarget = &trainTargetCM[3 * slotIdx];
     tTarget[0] = comp.lumOutput.x;
     tTarget[1] = comp.lumOutput.y;
@@ -74,50 +81,52 @@ __global__ void NRCTCNN_GenTrainBatchFromTrainInput(
 
 void NRCTinyCudaNN::Init() {
     static_assert(sizeof(TCNNTrainInput) == sizeof(float) * 4 * 4, "size unexpected");
+    static_assert(sizeof(NRCNetInferenceOutput) == sizeof(float) * 3, "size unexpected");
 
     assert(!initialized);
 
     nlohmann::json config = {
         {"loss", {
-            {"otype", "L2"}
+            //{"otype", "L2"},
+            {"otype", "RelativeL2"}
             // {"otype", "RelativeL2Luminance"}
         }},
         {"optimizer", {
             // Moments might be nan, difficult to recover
             {"otype", "Adam"},
             // {"otype", "SGD"},
-            {"learning_rate", 1e-4},
+            {"learning_rate", 1e-3},
         }},
-        // {"encoding", {
-        //     {"otype", "Composite"},
-        //     {"nested", {
-        //         // Position, rayIsect
-        //         // TriangleWave is way faster than OneBlob
-        //         // (As is described in the paper)
-        //         {
-        //             {"otype", "TriangleWave"}, 
-        //             {"n_frequencies", 12u},
-        //             {"n_dims_to_encode", 3u}
-        //         },
-        //         // Roughness & RayDir & NormalDir
-        //         {
-        //             {"otype", "OneBlob"},
-        //             {"n_bins", 4u},
-        //             {"n_dims_to_encode", 5u}
-        //         },
-        //         // DiffuseRefl & SpecularRefl
-        //         // (6u expected, and 2 dummy)
-        //         {
-        //             {"otype", "Identity"}
-        //         }
-        //     }}
-        // }},
         {"encoding", {
-            {"otype", "Identity"}
+            {"otype", "Composite"},
+            {"nested", {
+                // Position, rayIsect
+                // TriangleWave is way faster than OneBlob
+                // (As is described in the paper)
+                {
+                    {"otype", "TriangleWave"}, 
+                    {"n_frequencies", 12u},
+                    {"n_dims_to_encode", 3u}
+                },
+                // Roughness & RayDir & NormalDir
+                {
+                    {"otype", "OneBlob"},
+                    {"n_bins", 4u},
+                    {"n_dims_to_encode", 5u}
+                },
+                // DiffuseRefl & SpecularRefl
+                // (6u expected, and 2 dummy)
+                {
+                    {"otype", "Identity"}
+                }
+            }}
         }},
+        //{"encoding", {
+        //    {"otype", "Identity"}
+        //}},
         {"network", {
-            // {"otype", "FullyFusedMLP"},
-            {"otype", "CutlassMLP"},
+            {"otype", "FullyFusedMLP"},
+            // {"otype", "CutlassMLP"},
             {"activation", "ReLU"},
             {"output_activation", "None"},
             {"n_neurons", numNeurons},

@@ -31,6 +31,9 @@ if (OPTION_CUDA_DEBUG_FULL)
     target_compile_options(RenderCore_Optix7NRC PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:-G>
     )
+    target_compile_definitions(RenderCore_Optix7NRC PUBLIC
+        NRC_OPTIX_DEBUG
+    )
 endif()
 
 set_target_properties(RenderCore_Optix7NRC PROPERTIES CUDA_ARCHITECTURES "75")

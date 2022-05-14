@@ -157,7 +157,7 @@ private:
 
 	// == NRC Added ==
 	bool nrcTrainingEnable;
-	uint nrcNumInitialTrainingRays = 1024;
+	uint nrcNumInitialTrainingRays = 4096;
 	enum {
 		ORIGINAL,
 		REFERENCE,
@@ -186,8 +186,8 @@ private:
 	CoreBuffer<uint>* infPixelIndices = nullptr;
 	CoreBuffer<float3>* infPixelContribs = nullptr;
 
-	// NRCTinyCudaNN* nrcNet;
-	NRCKNN* nrcNet;
+	NRCTinyCudaNN* nrcNet;
+	// NRCKNN* nrcNet;
 
 	float lastLoss = 0.0f;
 	int lastProcessedRays = 0;
