@@ -17,6 +17,7 @@
 #include "rendersystem.h"
 #include <bitset>
 #include <memory>
+#include <chrono>
 
 // Dear ImGui
 #include "imgui.h"
@@ -80,6 +81,7 @@ static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
 static bool running = true;
 static std::bitset<1024> keystates;
 
+static std::chrono::steady_clock::time_point lastTP;
 static ScrollingBuffer lossBuf;
 static ScrollingBuffer processedRayBuf;
 
@@ -141,6 +143,12 @@ void DrawUI() {
 
 	std::string fRendered = "FrameRendered: " + std::to_string(frameRendered);
 	ImGui::Text(fRendered.c_str());
+
+	auto current = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed_seconds = std::chrono::duration<double>(current - lastTP);
+	double fps = 1.0 / elapsed_seconds.count();
+	lastTP = current;
+	ImGui::Text("FPS: %lf", fps);
 
 	std::string hint = "CurrentRT: " + currentRT;
 	ImGui::Text(hint.c_str());
