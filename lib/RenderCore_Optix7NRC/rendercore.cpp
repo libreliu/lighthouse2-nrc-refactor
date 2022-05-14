@@ -1020,7 +1020,8 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 		FinalizeRender();
 	} else if (renderMode == NRC_FULL) {
 		// TODO: implement me
-
+		RenderImplNRCFull( view );
+		FinalizeRenderNRC();
 	}
 }
 void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
@@ -1569,6 +1570,73 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y
 		);
 	}
+}
+
+void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
+	UpdateToplevel();
+	if (samplesTaken == 0) accumulator->Clear(ON_DEVICE);
+	trainTraceBuffer->Clear(ON_DEVICE);
+
+	// Prepare
+	RandomUInt( shiftSeed );
+	coreStats.totalExtensionRays = coreStats.totalShadowRays = 0;
+	float3 right = view.p2 - view.p1, up = view.p3 - view.p1;
+	params.posLensSize = make_float4( view.pos.x, view.pos.y, view.pos.z, view.aperture );
+	params.distortion = view.distortion;
+	params.shift = shiftSeed;
+	params.right = make_float3( right.x, right.y, right.z );
+	params.up = make_float3( up.x, up.y, up.z );
+	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
+	params.pass = samplesTaken;
+	params.bvhRoot = bvhRoot;
+	params.trainTraces = trainTraceBuffer->DevPtr();
+	params.trainConnStates = trainConnStateBuffer->DevPtr();
+	params.infConnStates = infConnStateBuffer->DevPtr();
+
+	// Train Net
+	uint trainRayCount = nrcNumInitialTrainingRays;
+	for (uint tpLength = 0; tpLength < NRC_MAX_TRAIN_PATHLENGTH; tpLength++) {
+		// setup params array
+		params.trainPathStates = trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr();
+		params.pathLength = tpLength;
+		
+		if (nrcTrainingRaysSampler == UNIFORM) {
+			params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
+		} else if (nrcTrainingRaysSampler == HILTON) {
+			params.phase = Params::SPAWN_NRC_PRIMARY_HILTON;
+		}
+		cudaMemcpy((void*)nrcParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice);
+		params.phase = Params::SPAWN_NRC_SECONDARY;
+		cudaMemcpy((void*)nrcParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice);
+		params.phase = Params::SPAWN_NRC_SHADOW;
+		cudaMemcpy((void*)nrcParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice);
+
+		// do trace
+		if (tpLength == 0) {
+			CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, trainRayCount, 1, 1 ) );
+		} else {
+			CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsSecondary, sizeof( Params ), &sbt, trainRayCount, 1, 1 ) );
+		}
+		
+		// do shade
+		if (tpLength == 0) {
+			InitCountersForExtend(nrcNumInitialTrainingRays);
+		}
+		
+		shadeTrain(
+			trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr(), trainRayCount,
+			trainPathStateBuffer[tpLength % 2 == 0 ? 1 : 0]->DevPtr(),
+			hitBuffer->DevPtr(),
+			trainConnStateBuffer->DevPtr(), trainTraceBuffer->DevPtr(),
+			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, 0,
+			scrwidth, scrheight, view.spreadAngle
+		);
+	}
+
+	// Shade
+
+
+	// 
 }
 
 void RenderCore::FinalizeRenderNRC()

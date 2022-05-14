@@ -195,6 +195,7 @@ private:
 	void InitNRC();
 	void ShutdownNRC();
 	void RenderImplNRCPrimary(const ViewPyramid &view);
+	void RenderImplNRCFull(const ViewPyramid &view);
 	void FinalizeRenderNRC();
 
 protected:
