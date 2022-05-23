@@ -260,6 +260,27 @@ __device__ void setupInfPrimaryRay( const uint pathIdx, const uint stride )
 	}
 }
 
+__device__ void setupNRCSecondaryRay( const uint pathIdx, const uint stride )
+{
+	TrainPathState *tpState = &params.trainPathStates[pathIdx];
+
+	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
+	optixTrace(
+		params.bvhRoot, tpState->O, tpState->D,
+		params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
+		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3
+	);
+
+	if (u2 != 0xffffffff) {
+		params.hitData[pathIdx] = make_float4(
+			__uint_as_float( u0 ),
+			__uint_as_float( u1 ),
+			__uint_as_float( u2 ),
+			__uint_as_float( u3 )
+		);
+	}
+}
+
 
 extern "C" __global__ void __raygen__rg()
 {
@@ -275,7 +296,7 @@ extern "C" __global__ void __raygen__rg()
 	case Params::SPAWN_SECONDARY: /* secondary rays */ setupSecondaryRay( rayIdx, stride ); break;
 	case Params::SPAWN_SHADOW: /* shadow rays */ generateShadowRay( rayIdx, stride ); break;
 	case Params::SPAWN_NRC_PRIMARY_UNIFORM: setupNRCPrimaryRayUniform(trainRayIdx, stride); break;
-	case Params::SPAWN_NRC_SECONDARY: break;
+	case Params::SPAWN_NRC_SECONDARY: setupNRCSecondaryRay(trainRayIdx, stride); break;
 	case Params::SPAWN_NRC_SHADOW: generateNRCShadowRay(rayIdx, stride); break;
 	case Params::SPAWN_INF_PRIMARY: setupInfPrimaryRay(rayIdx, stride); break;
 	// TODO: INF_SECONDARY, INF_SHADOW

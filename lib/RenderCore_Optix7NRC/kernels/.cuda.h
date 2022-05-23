@@ -15,6 +15,7 @@
 
 // generic includes
 #include <vector>
+#include <type_traits>
 
 // custom types
 typedef unsigned int uint;

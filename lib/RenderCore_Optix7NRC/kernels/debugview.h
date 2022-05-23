@@ -143,7 +143,7 @@ __host__ void pathStateIntersectionVisualize(
 }
 
 // For convenience, should adjust numElements when calling as well
-template<int pathLenStart, int pathLenEnd, int visualizeType>
+template<int pathLenStart, int pathLenEnd, int visualizeType, bool showAll = true>
 __device__ bool traceBufIterator(
     uint jobIndex, float3& worldPos, float3& color,
     const NRCTraceBuf* traceBuf
@@ -154,6 +154,10 @@ __device__ bool traceBufIterator(
 
     if (comp.traceFlags == 0) {
         return false;
+    }
+
+    if (!showAll) {
+        // add filter option if necessary
     }
     worldPos = comp.rayIsect;
 
@@ -237,4 +241,56 @@ __host__ void inferenceOutputBufferVisuailze(
         numInferenceRays, debugRT, w, h, viewP1, viewP2, viewP3, viewPos, distortion,
         infInputBuf, infIndicesBuf, infOutputBuf
     );
+}
+
+template <auto Start, auto End, auto Inc, class F>
+constexpr void constexpr_for(F&& f) {
+    if constexpr (Start < End) {
+        f(std::integral_constant<decltype(Start), Start>());
+        constexpr_for<Start + Inc, End, Inc>(f);
+    }
+}
+
+__host__ void traceBufDiffuseReflVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+	const uint pathLength, /* 0 ~ NRC_MAX_TRAIN_PATHLENGTH - 1 */
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    if (pathLength >= NRC_MAX_TRAIN_PATHLENGTH || pathLength < 0) {
+        fprintf(stderr, "[NRC ERR] Visualize wrong pathlength\n");
+        return;
+    }
+    constexpr_for<0, NRC_MAX_TRAIN_PATHLENGTH, 1>([&](auto i) {
+        if (i == pathLength) {
+            worldPosVisualize<traceBufIterator<i, i + 1, 1, false>, 0>(
+                numTrainingRays, debugRT,
+                w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+                traceBuf
+            );
+        }
+    });
+}
+
+__host__ void traceBufLumOutputVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+	const uint pathLength, /* 0 ~ NRC_MAX_TRAIN_PATHLENGTH - 1 */
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+) {
+    if (pathLength >= NRC_MAX_TRAIN_PATHLENGTH || pathLength < 0) {
+        fprintf(stderr, "[NRC ERR] Visualize wrong pathlength\n");
+        return;
+    }
+    constexpr_for<0, NRC_MAX_TRAIN_PATHLENGTH, 1>([&](auto i) {
+        if (i == pathLength) {
+            worldPosVisualize<traceBufIterator<i, i + 1, 2, false>, 0>(
+                numTrainingRays, debugRT,
+                w, h, viewP1, viewP2, viewP3, viewPos, distortion,
+                traceBuf
+            );
+        }
+    });
 }

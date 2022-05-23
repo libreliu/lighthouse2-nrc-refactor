@@ -98,7 +98,7 @@ struct alignas(sizeof(float) * 4) NRCTraceBufComponent {
     float3 lumOutput;
 	uint pixelIdx;
     float3 throughput;
-    float dummy;
+    float rrProb;
 };
 
 struct NRCTraceBuf {

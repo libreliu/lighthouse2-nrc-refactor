@@ -70,6 +70,7 @@ __global__ void shadeTrainKernel(
             comp.pixelIdx = pixelIdx;
             comp.pathIdx = pathIdx;
             comp.traceFlags = NRC_TRACEFLAG_HIT_SKYBOX;
+            comp.rrProb = 1;
 
             traceBuf[pathIdx].traceComponent[pathLength] = comp;
         }
@@ -99,6 +100,7 @@ __global__ void shadeTrainKernel(
     comp.pathIdx = pathIdx;
     comp.traceFlags = 0;                    // default value
     comp.lumOutput = make_float3(0.0f);     // default value, useful for secondary ray hit program
+    comp.rrProb = 1;                        // default value
 
     // TODO: handle translucent material
 
@@ -200,6 +202,7 @@ __global__ void shadeTrainKernel(
     const float p = ((flags & S_SPECULAR) || ((flags & S_BOUNCED) == 0)) ? 1 : SurvivalProbability( bsdf );
 	if (p < RandomFloat( seed )) {
         comp.traceFlags |= NRC_TRACEFLAG_RR_TRUNCTUATE;
+        comp.rrProb = p;
         traceBuf[pathIdx].traceComponent[pathLength] = comp;
         return;
     }
@@ -346,6 +349,114 @@ __host__ void shadeNRCOnly(
         inferencePixelIndices,
         inferencePixelContribs
     );
+}
+
+__global__ void shadeNRCKernel(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+) {
+    // respect boundaries
+	int jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+	if (jobIndex >= pathCount) return;
+
+    const float4 hitData = hits[jobIndex];
+
+    const InferencePathState& ipState = pathStates[jobIndex];
+    const float3 O = ipState.O;
+    uint flags = ipState.flags;
+    const float3 D = ipState.D;
+    const uint pathIdx = ipState.pathIdx;
+    const float3 throughput = pathLength == 0 ? make_float3(1.0f) : ipState.throughput;
+    const uint pixelIdx = ipState.pixelIdx;
+    const uint sampleIdx = pass;
+
+    if (PRIMIDX == NOHIT) {
+        float3 tD = -worldToSky.TransformVector( D );
+		float3 skyPixel = flags & S_BOUNCED ? SampleSmallSkydome( tD ) : SampleSkydome( tD );
+		float3 contribution = throughput * skyPixel;
+		CLAMPINTENSITY; // limit magnitude of thoughput vector to combat fireflies
+        FIXNAN_FLOAT3( contribution );
+
+        accumulator[pixelIdx] += make_float4( contribution, 0 );
+		return;
+    }
+
+    const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
+
+    // Look up the net
+	ShadingData shadingData;
+	float3 N, iN, fN, T;
+	const float3 I = O + HIT_T * D;
+	const float coneWidth = spreadAngle * HIT_T;
+	GetShadingData( D, HIT_U, HIT_V, coneWidth, instanceTriangles[PRIMIDX], INSTANCEIDX, shadingData, N, iN, fN, T );
+	uint seed = WangHash( pathIdx * 17 + R0 /* well-seeded xor32 is all you need */ );
+
+    const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
+
+    NRCNetInferenceInput &iInput = inferenceInput[infIdx];
+    
+    iInput.rayIsect = I;
+    iInput.roughness = ROUGHNESS;
+    iInput.rayDir = toSphericalCoord(D);
+    iInput.normalDir = toSphericalCoord(fN);
+    iInput.diffuseRefl = shadingData.color;
+    iInput.specularRefl = shadingData.color;  // TODO: figure out
+    iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+    // iInput.roughness = 0.0f;
+    // iInput.rayDir = make_float2(0.0f);
+    // iInput.normalDir = make_float2(0.0f);
+    // iInput.diffuseRefl = make_float3(0.0f);
+    // iInput.specularRefl = make_float3(0.0f);
+    // iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+    inferencePixelIndices[infIdx] = pixelIdx;
+    inferencePixelContribs[infIdx] = make_float3(1.0f, 1.0f, 1.0f);
+}
+
+__host__ void shadeNRC(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+) {
+    const dim3 gridDim( NEXTMULTIPLEOF( pathCount, 128 ) / 128, 1 );
+    shadeNRCKernel <<<gridDim.x, 128>>> (
+        accumulator,
+        pathStates, pathCount,
+        nextPathStates,
+        hits,
+        connections,
+        R0, shift, blueNoise, pass,
+        pathLength, w, h, spreadAngle,
+        numRaysToBeInferenced,
+        inferenceInput,
+        inferencePixelIndices,
+        inferencePixelContribs
+    );
+}
+
+// TODO: implement me
+__host__ void nrcTraceBufPostprocess(
+
+) {
+
 }
 
 

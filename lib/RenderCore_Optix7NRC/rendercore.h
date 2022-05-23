@@ -191,6 +191,7 @@ private:
 
 	float lastLoss = 0.0f;
 	int lastProcessedRays = 0;
+	int trainVisLayer = 0;
 
 	void InitNRC();
 	void ShutdownNRC();

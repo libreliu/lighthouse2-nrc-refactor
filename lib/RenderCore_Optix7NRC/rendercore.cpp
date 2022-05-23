@@ -116,6 +116,22 @@ void traceBufPrimaryLumOutputVisualize(
     const float3 viewPos, const float distortion
 );
 
+void traceBufDiffuseReflVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+	const uint pathLength, /* 0 ~ NRC_MAX_TRAIN_PATHLENGTH - 1 */
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+);
+
+void traceBufLumOutputVisualize(
+    const NRCTraceBuf* traceBuf, const uint numTrainingRays,
+	const uint pathLength, /* 0 ~ NRC_MAX_TRAIN_PATHLENGTH - 1 */
+    float4* debugRT, const uint w, const uint h,
+    const float3 viewP1, const float3 viewP2, const float3 viewP3,
+    const float3 viewPos, const float distortion
+);
+
 } // namespace lh2core
 
 using namespace lh2core;
@@ -1210,12 +1226,12 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 		nrcNumInitialTrainingRays = std::atoi(value);
 		for (int i = 0; i < 2; i++) {
 			if (trainPathStateBuffer[i] == nullptr ||
-				trainPathStateBuffer[i]->GetSize() < nrcNumInitialTrainingRays) {
+				trainPathStateBuffer[i]->GetSize() < nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH) {
 				if (trainPathStateBuffer[i]) {
 					delete trainPathStateBuffer[i];
 				}
 				trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
-					nrcNumInitialTrainingRays,
+					nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
 					ON_DEVICE
 				);
 			}
@@ -1274,6 +1290,14 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 			nrcNet->Reset(NRCNET_RESETMODE_UNIFORM);
 		}
 		return true;
+	} else if (!strcmp(name, "trainVisLayer")) {
+		int tvInput = std::atoi(value);
+		if (tvInput < 0 || tvInput >= NRC_MAX_TRAIN_PATHLENGTH) {
+			return false;
+		} else {
+			trainVisLayer = tvInput;
+			return true;
+		}
 	}
 	return false;
 }
@@ -1290,6 +1314,8 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return std::to_string(lastLoss);
 	} else if (!strcmp(name, "lastProcessedRays")) {
 		return std::to_string(lastProcessedRays);
+	} else if (!strcmp(name, "nrcMaxTrainPathLength")) {
+		return std::to_string(NRC_MAX_TRAIN_PATHLENGTH);
 	}
 
 	return "";
@@ -1354,6 +1380,8 @@ void RenderCore::InitNRC() {
 	auxRTMgr.RegisterRT("traceBufPrimaryLOut");
 	auxRTMgr.RegisterRT("infInputBuffer");
 	auxRTMgr.RegisterRT("infOutputBuffer");
+	auxRTMgr.RegisterRT("traceBufDRefl");
+	auxRTMgr.RegisterRT("traceBufLOut");
 }
 
 void RenderCore::ShutdownNRC() {
@@ -1489,6 +1517,19 @@ void RenderCore::RenderImplNRCPrimary(const ViewPyramid &view) {
 		);
 	}
 
+	if (auxRTMgr.isSetupAndInterested("traceBufDRefl")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufDRefl");
+		traceBufDiffuseReflVisualize(
+			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays, trainVisLayer,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
+
 	// train
 	if (nrcTrainingEnable) {
 		int trainBatchSize = nrcNumInitialTrainingRays;
@@ -1593,6 +1634,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 	params.trainConnStates = trainConnStateBuffer->DevPtr();
 	params.infConnStates = infConnStateBuffer->DevPtr();
 
+	Counters counters;
+
 	// Train Net
 	uint trainRayCount = nrcNumInitialTrainingRays;
 	for (uint tpLength = 0; tpLength < NRC_MAX_TRAIN_PATHLENGTH; tpLength++) {
@@ -1628,15 +1671,55 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			trainPathStateBuffer[tpLength % 2 == 0 ? 1 : 0]->DevPtr(),
 			hitBuffer->DevPtr(),
 			trainConnStateBuffer->DevPtr(), trainTraceBuffer->DevPtr(),
-			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, 0,
+			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, tpLength,
 			scrwidth, scrheight, view.spreadAngle
+		);
+
+		counterBuffer->CopyToHost();
+		counters = counterBuffer->HostPtr()[0];
+
+		// trace shadow ray (TODO: performance improvement)
+		if (counters.shadowRays > 0) {
+			CHK_OPTIX(optixLaunch(pipeline, 0, nrcParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1));
+		}
+
+		trainRayCount = counters.extensionRays;
+
+		if (trainRayCount == 0) {
+			break;
+		}
+	}
+
+	// DebugView
+	if (auxRTMgr.isSetupAndInterested("traceBufDRefl")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufDRefl");
+		traceBufDiffuseReflVisualize(
+			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays, trainVisLayer,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
 		);
 	}
 
-	// Shade
+	if (auxRTMgr.isSetupAndInterested("traceBufLOut")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("traceBufLOut");
+		traceBufLumOutputVisualize(
+			trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays, trainVisLayer,
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
+
+	// train
 
 
-	// 
 }
 
 void RenderCore::FinalizeRenderNRC()

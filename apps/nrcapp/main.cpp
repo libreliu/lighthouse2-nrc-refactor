@@ -72,6 +72,8 @@ enum nrcRenderModeSet {
 } nrcRenderMode;
 int frameRendered = 0;
 bool renderConverge = false;
+int trainVisLayer = 0;
+int nrcMaxTrainPathLength = 0;
 
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
@@ -217,6 +219,14 @@ void DrawUI() {
 		std::string rayStr = std::to_string(nrcNumInitialTrainingRays);
 		renderer->SettingStringExt("nrcNumInitialTrainingRays", rayStr.c_str());
 	}
+	
+	if (ImGui::SliderInt("TrainVisLayer", &trainVisLayer, 0, nrcMaxTrainPathLength - 1)) {
+		std::string tvLayer = std::to_string(trainVisLayer);
+		bool success = renderer->SettingStringExt("trainVisLayer", tvLayer.c_str());
+		if (!success) {
+			trainVisLayer = 0;
+		}
+	}
 
 	ImGui::Separator();
 
@@ -238,7 +248,10 @@ void DrawUI() {
 
 		uint lastData = lossBuf.Data.size() < ScrollingBufferMaxSize ? 
 			lossBuf.Data.size() - 1 : (lossBuf.Offset == 0 ? lossBuf.Data.size() - 1 : lossBuf.Offset - 1);
-		ImGui::Text("Loss: %.2f", lossBuf.Data[lastData].y);
+
+		if (lossBuf.Data.size() > 0) {
+			ImGui::Text("Loss: %.2f", lossBuf.Data[lastData].y);
+		}
 
 		if (processedRayBuf.Data.size() > 0 && ImPlot::BeginPlot("##Rayprocessed", ImVec2(-1,150))) {
 			ImPlot::SetupAxes(
@@ -252,7 +265,9 @@ void DrawUI() {
 			ImPlot::EndPlot();
 		}
 
-		ImGui::Text("Ray processed: %.0f", processedRayBuf.Data[lastData].y);
+		if (processedRayBuf.Data.size() > 0) {
+			ImGui::Text("Ray processed: %.0f", processedRayBuf.Data[lastData].y);
+		}
 	}
 
 	ImGui::End();
@@ -308,6 +323,9 @@ void InitAuxRT() {
 
 	auxRTEnabled = renderer->EnableFeatureExt("auxiliaryRenderTargets");
 	if (!auxRTEnabled) return;
+
+	string maxTrainPathLen = renderer->GetSettingStringExt("nrcMaxTrainPathLength");
+	nrcMaxTrainPathLength = std::atoi(maxTrainPathLen.c_str());
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -330,7 +348,8 @@ int main()
 	InitAuxRT();
 	// initialize nrc render mode - todo: duplicate apply
 	// nrcRenderMode = nrcRenderModeSet::ORIGINAL;
-	nrcRenderMode = nrcRenderModeSet::NRC_PRIMARY;
+	// nrcRenderMode = nrcRenderModeSet::NRC_PRIMARY;
+	nrcRenderMode = nrcRenderModeSet::NRC_FULL;
 	setRenderMode();
 	// initialize scene
 	PrepareScene();
