@@ -452,11 +452,37 @@ __host__ void shadeNRC(
     );
 }
 
+__global__ void nrcTraceBufPostprocess_Kernel(
+    NRCTraceBuf* traceBuf,
+    uint numTrainRays
+) {
+    uint jobIndex = threadIdx.x + blockIdx.x * blockDim.x;
+    if (jobIndex >= numTrainRays) {
+        return;
+    }
+    
+    float3 prevLumOut = make_float3(0.0f);
+    for (int pLen = NRC_MAX_TRAIN_PATHLENGTH - 1; pLen >= 0; pLen--) {
+        NRCTraceBufComponent &comp = traceBuf[jobIndex].traceComponent[pLen];
+        if (comp.traceFlags == 0) {
+            continue;
+        }
+
+        comp.lumOutput += comp.throughput * prevLumOut;
+        prevLumOut = comp.lumOutput;
+    }
+}
+
 // TODO: implement me
 __host__ void nrcTraceBufPostprocess(
-
+    NRCTraceBuf* traceBuf,
+    uint numTrainRays
 ) {
-
+    const dim3 gridDim( NEXTMULTIPLEOF( numTrainRays, 128 ) / 128, 1 );
+    nrcTraceBufPostprocess_Kernel <<<gridDim.x, 128>>>(
+        traceBuf,
+        numTrainRays
+    );
 }
 
 

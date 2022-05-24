@@ -95,6 +95,11 @@ void shadeNRCOnly(
     float3* inferencePixelContribs
 );
 
+void nrcTraceBufPostprocess(
+    NRCTraceBuf* traceBuf,
+    uint numTrainRays
+);
+
 void nrcContribAdd(
     float4* accumulator,
     const uint numInferenceRays,
@@ -1689,6 +1694,9 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			break;
 		}
 	}
+
+	// TODO: add an option?
+	nrcTraceBufPostprocess(trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays);
 
 	// DebugView
 	if (auxRTMgr.isSetupAndInterested("traceBufDRefl")) {
