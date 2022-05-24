@@ -105,7 +105,7 @@ void shadeRefKernel( float4* accumulator, const uint stride,
 			if (pathLength == 1 || (FLAGS & S_SPECULAR) > 0 || connections == 0)
 			{
 				// accept light contribution if previous vertex was specular
-				contribution = shadingData.color;
+				contribution = throughput * shadingData.color;
 			}
 			else
 			{

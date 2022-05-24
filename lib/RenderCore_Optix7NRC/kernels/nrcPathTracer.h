@@ -49,7 +49,7 @@ __global__ void shadeTrainKernel(
     uint flags = tpState.flags;
     const float3 D = tpState.D;
     const uint pathIdx = tpState.pathIdx;
-    //const float3 throughput = tpState.throughput;
+    const float3 throughput = tpState.throughput;
     const uint pixelIdx = tpState.pixelIdx;
     const uint sampleIdx = pass;
 
@@ -111,14 +111,15 @@ __global__ void shadeTrainKernel(
 
         float3 contribution = make_float3( 0 ); // initialization required.
 		if (DdotNL > 0 /* lights are not double sided */) {
-            comp.lumOutput = shadingData.color;
+            if (pathLength == 0 || (flags & S_SPECULAR) > 0) {
+                comp.lumOutput = throughput * shadingData.color;
+            }
             comp.traceFlags |= NRC_TRACEFLAG_HIT_LIGHT_FRONT;
 		} else {
             comp.traceFlags |= NRC_TRACEFLAG_HIT_LIGHT_BACK;
         }
 
         traceBuf[pathIdx].traceComponent[pathLength] = comp;
-        
 		return;
     }
 
