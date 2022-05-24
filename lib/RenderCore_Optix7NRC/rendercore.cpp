@@ -1726,7 +1726,85 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 	}
 
 	// train
+	if (nrcTrainingEnable) {
+		int trainBatchSize = nrcNumInitialTrainingRays;
+		lastProcessedRays = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
+		lastLoss = nrcNet->Train(256, 1);
+	}
 
+	CHK_CUDA(cudaDeviceSynchronize());
+
+	// shade
+	uint pathCount = scrwidth * scrheight * scrspp;
+	InitCountersForExtend(pathCount);
+
+	params.pathLength = 0;
+	params.infPathStates = infPathStateBuffer[0]->DevPtr();
+	params.phase = Params::SPAWN_INF_PRIMARY;
+	cudaMemcpyAsync((void*)infParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_INF_SECONDARY;
+	cudaMemcpyAsync((void*)infParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	params.phase = Params::SPAWN_INF_SHADOW;
+	cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+	CHK_OPTIX(optixLaunch(pipeline, 0, infParamsPrimary, sizeof(Params), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1));
+
+	// shade & emit
+	numInferenceRays->Clear(ON_DEVICE | ON_HOST);
+	shadeNRCOnly(
+		accumulator->DevPtr(),
+		infPathStateBuffer[0]->DevPtr(), pathCount,
+		infPathStateBuffer[1]->DevPtr(),
+		hitBuffer->DevPtr(),
+		infConnStateBuffer->DevPtr(),
+		RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken,
+		0, scrwidth, scrheight, view.spreadAngle,
+		numInferenceRays->DevPtr(),
+		infInputBuffer->DevPtr(),
+		infPixelIndices->DevPtr(),
+		infPixelContribs->DevPtr()
+	);
+
+	numInferenceRays->CopyToHost();
+
+	if (auxRTMgr.isSetupAndInterested("infInputBuffer")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("infInputBuffer");
+		inferenceInputBufferVisuailze(
+			infInputBuffer->DevPtr(), infPixelIndices->DevPtr(), *numInferenceRays->HostPtr(),
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
+
+	// do inference
+	if (*numInferenceRays->HostPtr() > 0) {
+		infOutputBuffer->Clear(ON_DEVICE);
+		nrcNet->Inference(infInputBuffer, *numInferenceRays->HostPtr(), infOutputBuffer);
+		nrcContribAdd(
+			accumulator->DevPtr(),
+			*numInferenceRays->HostPtr(),
+			infOutputBuffer->DevPtr(),
+			infPixelIndices->DevPtr(),
+			infPixelContribs->DevPtr()
+		);
+	}
+
+	if (auxRTMgr.isSetupAndInterested("infOutputBuffer")) {
+		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("infOutputBuffer");
+		inferenceOutputBufferVisuailze(
+			infInputBuffer->DevPtr(), infPixelIndices->DevPtr(),
+			infOutputBuffer->DevPtr(), *numInferenceRays->HostPtr(),
+			rtBufPtr->DevPtr(), params.scrsize.x, params.scrsize.y,
+			make_float3(view.p1.x, view.p1.y, view.p1.z),
+			make_float3(view.p2.x, view.p2.y, view.p2.z),
+			make_float3(view.p3.x, view.p3.y, view.p3.z),
+			make_float3(view.pos.x, view.pos.y, view.pos.z),
+			view.distortion
+		);
+	}
 
 }
 
