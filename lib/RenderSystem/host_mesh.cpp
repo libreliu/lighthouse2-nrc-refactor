@@ -390,40 +390,74 @@ void HostMesh::ConvertFromGTLFMesh( const tinygltfMesh& gltfMesh, const tinygltf
 				float3 boundsMin = make_float3( attribAccessor.minValues[0], attribAccessor.minValues[1], attribAccessor.minValues[2] );
 				float3 boundsMax = make_float3( attribAccessor.maxValues[0], attribAccessor.maxValues[1], attribAccessor.maxValues[2] );
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC3)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpVertices.push_back( *((float3*)a) );
+					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+						for (size_t i = 0; i < count; i++, a += byte_stride) {
+							float3 data;
+							data.x = *(float*)a;
+							data.y = *((float*)a + 1);
+							data.z = *((float*)a + 2);
+							tmpVertices.push_back(data);
+						}
+					}
 					else FATALERROR( "double precision positions not supported in gltf file" );
 				else FATALERROR( "unsupported position definition in gltf file" );
 			}
 			else if (attribute.first == "NORMAL")
 			{
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC3)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpNormals.push_back( *((float3*)a) );
+					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+						for (size_t i = 0; i < count; i++, a += byte_stride) {
+							float3 data;
+							data.x = *(float*)a;
+							data.y = *((float*)a + 1);
+							data.z = *((float*)a + 2);
+							tmpNormals.push_back(data);
+						}
+					}
 					else FATALERROR( "double precision normals not supported in gltf file" );
 				else FATALERROR( "expected vec3 normals in gltf file" );
 			}
 			else if (attribute.first == "TANGENT")
 			{
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC4)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpTs.push_back( *((float4*)a) );
+					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+						for (size_t i = 0; i < count; i++, a += byte_stride) {
+							float4 data;
+							data.x = *(float*)a;
+							data.y = *((float*)a + 1);
+							data.z = *((float*)a + 2);
+							data.w = *((float*)a + 3);
+							tmpTs.push_back(data);
+						}
+					}
 					else FATALERROR( "double precision tangents not supported in gltf file" );
 				else FATALERROR( "expected vec4 uvs in gltf file" );
 			}
 			else if (attribute.first == "TEXCOORD_0")
 			{
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC2)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpUvs.push_back( *((float2*)a) );
+					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+						for (size_t i = 0; i < count; i++, a += byte_stride) {
+							float2 data;
+							data.x = *(float*)a;
+							data.y = *((float*)a + 1);
+							tmpUvs.push_back(data);
+						}
+					}
 					else FATALERROR( "double precision uvs not supported in gltf file" );
 				else FATALERROR( "expected vec2 uvs in gltf file" );
 			}
 			else if (attribute.first == "TEXCOORD_1")
 			{
 				if (attribAccessor.type == TINYGLTF_TYPE_VEC2)
-					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-						for (size_t i = 0; i < count; i++, a += byte_stride) tmpUv2s.push_back( *((float2*)a) );
+					if (attribAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+						for (size_t i = 0; i < count; i++, a += byte_stride) {
+							float2 data;
+							data.x = *(float*)a;
+							data.y = *((float*)a + 1);
+							tmpUv2s.push_back(data);
+						}
+					}
 					else FATALERROR( "double precision uvs not supported in gltf file" );
 				else FATALERROR( "expected vec2 uvs in gltf file" );
 			}
