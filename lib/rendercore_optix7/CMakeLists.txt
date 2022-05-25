@@ -24,7 +24,7 @@ target_include_directories(RenderCore_Optix7 PUBLIC
 )
 set_property(
     TARGET RenderCore_Optix7
-    PROPERTY RUNTIME_OUTPUT_DIRECTORY $<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/coredlls/debug,${CMAKE_SOURCE_DIR}/coredlls/release>>
+    PROPERTY RUNTIME_OUTPUT_DIRECTORY $<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/coredlls/debug,${CMAKE_SOURCE_DIR}/coredlls/release>
 )
 
 # Use nvrtc if you want runtime compilation
