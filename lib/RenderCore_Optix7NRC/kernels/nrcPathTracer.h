@@ -393,7 +393,7 @@ __global__ void shadeNRCKernel(
 
     const CoreTri4* instanceTriangles = (const CoreTri4*)instanceDescriptors[INSTANCEIDX].triangles;
 
-    // Look up the net
+    // get shadingData and normals
 	ShadingData shadingData;
 	float3 N, iN, fN, T;
 	const float3 I = O + HIT_T * D;
@@ -401,27 +401,130 @@ __global__ void shadeNRCKernel(
 	GetShadingData( D, HIT_U, HIT_V, coneWidth, instanceTriangles[PRIMIDX], INSTANCEIDX, shadingData, N, iN, fN, T );
 	uint seed = WangHash( pathIdx * 17 + R0 /* well-seeded xor32 is all you need */ );
 
-    const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
+    // TODO: handle translucent material
+    if (shadingData.IsEmissive()) {
+        const float DdotNL = -dot(D, N);
+        float3 contribution = make_float3(0);
+        if (DdotNL > 0) {
+            if (pathLength == 0 || (ipState.flags & S_SPECULAR) > 0) {
+                contribution = throughput * shadingData.color;
+            }
+        }
 
-    NRCNetInferenceInput &iInput = inferenceInput[infIdx];
-    
-    iInput.rayIsect = I;
-    iInput.roughness = ROUGHNESS;
-    iInput.rayDir = toSphericalCoord(D);
-    iInput.normalDir = toSphericalCoord(fN);
-    iInput.diffuseRefl = shadingData.color;
-    iInput.specularRefl = shadingData.color;  // TODO: figure out
-    iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+        CLAMPINTENSITY;
+		FIXNAN_FLOAT3( contribution );
+		accumulator[pixelIdx] += make_float4( contribution, 0 );
+		return;
+    }
 
-    // iInput.roughness = 0.0f;
-    // iInput.rayDir = make_float2(0.0f);
-    // iInput.normalDir = make_float2(0.0f);
-    // iInput.diffuseRefl = make_float3(0.0f);
-    // iInput.specularRefl = make_float3(0.0f);
-    // iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+    // detect specular surfaces
+	if (ROUGHNESS <= 0.001f || TRANSMISSION > 0.5f) {
+        /* detect pure speculars; skip NEE for these */
+        flags |= S_SPECULAR;
+    } else {
+        flags &= ~S_SPECULAR;
+    }
 
-    inferencePixelIndices[infIdx] = pixelIdx;
-    inferencePixelContribs[infIdx] = make_float3(1.0f, 1.0f, 1.0f);
+    const float faceDir = (dot( D, N ) > 0) ? -1 : 1;
+	if (faceDir == 1) shadingData.transmittance = make_float3( 0 );
+
+    // prepare random numbers
+	float4 r4;
+	if (sampleIdx < 64) {
+		const uint x = ((pathIdx % w) + (shift & 127)) & 127;
+		const uint y = ((pathIdx / w) + (shift >> 24)) & 127;
+		r4 = blueNoiseSampler4( blueNoise, x, y, sampleIdx, 4 * pathLength );
+	} else {
+		r4.x = RandomFloat( seed ), r4.y = RandomFloat( seed );
+		r4.z = RandomFloat( seed ), r4.w = RandomFloat( seed );
+	}
+
+	// next event estimation: connect eye path to light
+    // NOTE: lumOutput (if hit) are updated by optix codes
+	if ((flags & S_SPECULAR) == 0 && connections != 0) {
+        float pickProb, lightPdf = 0;
+		float3 lightColor, L = RandomPointOnLight( r4.x, r4.y, I, fN * faceDir, pickProb, lightPdf, lightColor ) - I;
+		const float dist = length( L );
+		L *= 1.0f / dist;
+		const float NdotL = dot( L, fN * faceDir );
+		if (NdotL > 0 && lightPdf > 0)
+		{
+			float bsdfPdf;
+			const float3 sampledBSDF = EvaluateBSDF( shadingData, fN /* * faceDir */, T, D * -1.0f, L, bsdfPdf );
+			{
+				// add fire-and-forget shadow ray to the connections buffer
+				const uint shadowRayIdx = atomicAdd( &counters->shadowRays, 1 ); // compaction
+				InferenceConnState icState;
+                icState.O = SafeOrigin( I, L, N, geometryEpsilon );
+                icState.pathIdx = pathIdx;
+                icState.D = L;
+                icState.dist = dist - 2 * geometryEpsilon;
+                icState.directLum = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf));
+                icState.pixelIdx = pixelIdx;
+                
+                connections[shadowRayIdx] = icState;
+			}
+		}
+    }
+
+    // cap at maxium path length
+	if (pathLength == MAXPATHLENGTH - 1) {
+        // TODO: figure out how to lookup the net, since
+        // the contribution factor is puzzling
+        return;
+    }
+
+    // evaluate bsdf to obtain direction for next path segment
+	float3 R;
+	float newBsdfPdf;
+	bool specular = false;
+	const float3 bsdf = SampleBSDF( shadingData, fN, N, T, D * -1.0f, HIT_T, r4.z, r4.w, RandomFloat( seed ), R, newBsdfPdf, specular );
+    if (specular) flags |= S_SPECULAR;
+
+    const float p = ((flags & S_SPECULAR) || ((flags & S_BOUNCED) == 0)) ? 1 : SurvivalProbability( bsdf );
+
+    if (newBsdfPdf < EPSILON || isnan( newBsdfPdf ) || p < RandomFloat(seed)) {
+        
+        const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
+        NRCNetInferenceInput &iInput = inferenceInput[infIdx];
+        
+        iInput.rayIsect = I;
+        iInput.roughness = ROUGHNESS;
+        iInput.rayDir = toSphericalCoord(D);
+        iInput.normalDir = toSphericalCoord(fN);
+        iInput.diffuseRefl = shadingData.color;
+        iInput.specularRefl = shadingData.color;  // TODO: figure out
+        iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+        // iInput.roughness = 0.0f;
+        // iInput.rayDir = make_float2(0.0f);
+        // iInput.normalDir = make_float2(0.0f);
+        // iInput.diffuseRefl = make_float3(0.0f);
+        // iInput.specularRefl = make_float3(0.0f);
+        // iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+        inferencePixelIndices[infIdx] = pixelIdx;
+        inferencePixelContribs[infIdx] = throughput;
+
+        return;
+    }
+
+    const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 );
+	if (!(flags & S_SPECULAR)) {
+        flags |= flags & S_BOUNCED ? S_BOUNCEDTWICE : S_BOUNCED;
+    } else {
+        flags |= S_VIASPECULAR;
+    }
+
+    InferencePathState nextIp;
+    nextIp.O = SafeOrigin(I, R, N, geometryEpsilon);
+    nextIp.flags = flags;
+    nextIp.D = R;
+    nextIp.pathIdx = pathIdx;
+    nextIp.throughput = throughput * bsdf * abs(dot(fN, R)) / newBsdfPdf;
+    nextIp.pixelIdx = pixelIdx;
+
+    nextPathStates[extensionRayIdx] = nextIp;
 }
 
 __host__ void shadeNRC(

@@ -125,8 +125,8 @@ void NRCTinyCudaNN::Init() {
         //    {"otype", "Identity"}
         //}},
         {"network", {
-            {"otype", "FullyFusedMLP"},
-            // {"otype", "CutlassMLP"},
+            // {"otype", "FullyFusedMLP"},
+            {"otype", "CutlassMLP"},
             {"activation", "ReLU"},
             {"output_activation", "None"},
             {"n_neurons", numNeurons},

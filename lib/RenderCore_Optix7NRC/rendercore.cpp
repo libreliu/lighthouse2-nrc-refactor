@@ -95,6 +95,20 @@ void shadeNRCOnly(
     float3* inferencePixelContribs
 );
 
+void shadeNRC(
+    float4* accumulator, 
+    InferencePathState* pathStates, const uint pathCount,
+    InferencePathState* nextPathStates,
+    float4* hits, 
+    InferenceConnState* connections,
+	const uint R0, const uint shift, const uint* blueNoise, const int pass,
+    const int pathLength, const int w, const int h, const float spreadAngle,
+    int* numRaysToBeInferenced,
+    NRCNetInferenceInput* inferenceInput,
+    uint* inferencePixelIndices,
+    float3* inferencePixelContribs
+);
+
 void nrcTraceBufPostprocess(
     NRCTraceBuf* traceBuf,
     uint numTrainRays
@@ -463,7 +477,7 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 			}
 
 			infInputBuffer = new CoreBuffer<NRCNetInferenceInput>(
-				maxPixels * scrspp * 2,
+				maxPixels * scrspp * MAXPATHLENGTH,
 				ON_DEVICE
 			);
 		}
@@ -474,7 +488,7 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 			}
 
 			infOutputBuffer = new CoreBuffer<NRCNetInferenceOutput>(
-				maxPixels * scrspp * 2,
+				maxPixels * scrspp * MAXPATHLENGTH,
 				ON_DEVICE
 			);
 		}
@@ -485,7 +499,7 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 			}
 
 			infPixelIndices = new CoreBuffer<uint>(
-				maxPixels * scrspp * 2,
+				maxPixels * scrspp * MAXPATHLENGTH,
 				ON_DEVICE
 			);
 		}
@@ -496,7 +510,7 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 			}
 
 			infPixelContribs = new CoreBuffer<float3>(
-				maxPixels * scrspp * 2,
+				maxPixels * scrspp * MAXPATHLENGTH,
 				ON_DEVICE
 			);
 		}
@@ -1736,34 +1750,68 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 
 	// shade
 	uint pathCount = scrwidth * scrheight * scrspp;
-	InitCountersForExtend(pathCount);
-
-	params.pathLength = 0;
-	params.infPathStates = infPathStateBuffer[0]->DevPtr();
-	params.phase = Params::SPAWN_INF_PRIMARY;
-	cudaMemcpyAsync((void*)infParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
-	params.phase = Params::SPAWN_INF_SECONDARY;
-	cudaMemcpyAsync((void*)infParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
-	params.phase = Params::SPAWN_INF_SHADOW;
-	cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
-	CHK_OPTIX(optixLaunch(pipeline, 0, infParamsPrimary, sizeof(Params), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1));
-
-	// shade & emit
 	numInferenceRays->Clear(ON_DEVICE | ON_HOST);
-	shadeNRCOnly(
-		accumulator->DevPtr(),
-		infPathStateBuffer[0]->DevPtr(), pathCount,
-		infPathStateBuffer[1]->DevPtr(),
-		hitBuffer->DevPtr(),
-		infConnStateBuffer->DevPtr(),
-		RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken,
-		0, scrwidth, scrheight, view.spreadAngle,
-		numInferenceRays->DevPtr(),
-		infInputBuffer->DevPtr(),
-		infPixelIndices->DevPtr(),
-		infPixelContribs->DevPtr()
-	);
+	for (int pathLen = 0; pathLen < MAXPATHLENGTH; pathLen++) {
+		if (pathLen == 0) {
+			InitCountersForExtend(pathCount);
+		} else {
+			// TODO: check this
+			InitCountersSubsequent();
+		}
 
+		params.pathLength = pathLen;
+		params.infPathStates = infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr();
+		params.phase = Params::SPAWN_INF_PRIMARY;
+		cudaMemcpyAsync((void*)infParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+		params.phase = Params::SPAWN_INF_SECONDARY;
+		cudaMemcpyAsync((void*)infParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+		params.phase = Params::SPAWN_INF_SHADOW;
+		cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
+
+		if (pathLen == 0) {
+			CHK_OPTIX(
+				optixLaunch(pipeline, 0, infParamsPrimary, sizeof(Params), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1)
+			);
+		} else {
+			CHK_OPTIX(
+				optixLaunch(pipeline, 0, infParamsSecondary, sizeof(Params), &sbt, pathCount, 1, 1)
+			);
+		}
+		
+		shadeNRC(
+			accumulator->DevPtr(),
+			infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr(), pathCount,
+			infPathStateBuffer[pathLen % 2 == 0 ? 1 : 0]->DevPtr(),
+			hitBuffer->DevPtr(),
+			infConnStateBuffer->DevPtr(),
+			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken,
+			pathLen, scrwidth, scrheight, view.spreadAngle,
+			numInferenceRays->DevPtr(),
+			infInputBuffer->DevPtr(),
+			infPixelIndices->DevPtr(),
+			infPixelContribs->DevPtr()
+		);
+
+		counterBuffer->CopyToHost();
+		counters = counterBuffer->HostPtr()[0];
+
+		pathCount = counters.extensionRays;
+
+		// trace shadow ray
+		if (counters.shadowRays > 0) {
+			CHK_OPTIX(
+				optixLaunch(pipeline, 0, infParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1)
+			);
+
+			counterBuffer->HostPtr()[0].shadowRays = 0;
+			counterBuffer->CopyToDevice();
+		}
+
+		if (pathCount == 0) {
+			break;
+		}
+	}
+	
 	numInferenceRays->CopyToHost();
 
 	if (auxRTMgr.isSetupAndInterested("infInputBuffer")) {

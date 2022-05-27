@@ -260,6 +260,36 @@ __device__ void setupInfPrimaryRay( const uint pathIdx, const uint stride )
 	}
 }
 
+__device__ void generateInfShadowRay(const uint jobIndex, const uint stride) {
+	const InferenceConnState& icState = params.infConnStates[jobIndex];
+	uint u0 = 1;
+	optixTrace(
+		params.bvhRoot,
+		icState.O,
+		icState.D,
+		params.geometryEpsilon,
+		icState.dist,
+		0.0f /* ray time */,
+		OptixVisibilityMask(1),
+		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+		1, 2, 1,
+		u0
+	);
+
+	if (u0) {
+		return;
+	}
+
+	//const int pathIdx = icState.pathIdx;
+	const int pixelIdx = icState.pixelIdx;
+	const float3 directLum = icState.directLum;
+
+	if (pixelIdx < stride) {
+		params.accumulator[pixelIdx] += make_float4(directLum, 0.0f);
+	}
+}
+
+
 __device__ void setupNRCSecondaryRay( const uint pathIdx, const uint stride )
 {
 	TrainPathState *tpState = &params.trainPathStates[pathIdx];
@@ -281,6 +311,28 @@ __device__ void setupNRCSecondaryRay( const uint pathIdx, const uint stride )
 	}
 }
 
+__device__ void setupInfSecondaryRay( const uint pathIdx, const uint stride )
+{
+	InferencePathState *ipState = &params.infPathStates[pathIdx];
+
+	uint u0, u1 = 0, u2 = 0xffffffff, u3 = __float_as_uint( 1e34f );
+	optixTrace(
+		params.bvhRoot, ipState->O, ipState->D,
+		params.geometryEpsilon, 1e34f, 0.0f /* ray time */, OptixVisibilityMask( 1 ),
+		OPTIX_RAY_FLAG_NONE, 0, 2, 0, u0, u1, u2, u3
+	);
+
+	if (u2 != 0xffffffff) {
+		params.hitData[pathIdx] = make_float4(
+			__uint_as_float( u0 ),
+			__uint_as_float( u1 ),
+			__uint_as_float( u2 ),
+			__uint_as_float( u3 )
+		);
+	}
+}
+
+
 
 extern "C" __global__ void __raygen__rg()
 {
@@ -299,6 +351,8 @@ extern "C" __global__ void __raygen__rg()
 	case Params::SPAWN_NRC_SECONDARY: setupNRCSecondaryRay(trainRayIdx, stride); break;
 	case Params::SPAWN_NRC_SHADOW: generateNRCShadowRay(rayIdx, stride); break;
 	case Params::SPAWN_INF_PRIMARY: setupInfPrimaryRay(rayIdx, stride); break;
+	case Params::SPAWN_INF_SECONDARY: setupInfSecondaryRay(rayIdx, stride); break;
+	case Params::SPAWN_INF_SHADOW: generateInfShadowRay(rayIdx, stride); break;
 	// TODO: INF_SECONDARY, INF_SHADOW
 	}
 }
