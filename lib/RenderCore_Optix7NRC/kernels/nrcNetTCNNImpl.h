@@ -92,10 +92,14 @@ void NRCTinyCudaNN::Init() {
             {"otype", "RelativeL2Luminance"}
         }},
         {"optimizer", {
-            // Moments might be nan, difficult to recover
-            {"otype", "Adam"},
-            // {"otype", "SGD"},
-            {"learning_rate", 1e-3},
+            {"otype", "EMA"},
+            {"decay", 0.99},
+            {"nested", {
+                // Moments might be nan, difficult to recover
+                {"otype", "Adam"},
+                // {"otype", "SGD"},
+                {"learning_rate", 1e-3},
+            }}
         }},
         {"encoding", {
             {"otype", "Composite"},
