@@ -370,6 +370,7 @@ __global__ void shadeNRCKernel(
 	if (jobIndex >= pathCount) return;
 
     const float4 hitData = hits[jobIndex];
+    hits[jobIndex].z = __int_as_float(-1);  // reset for next query
 
     const InferencePathState& ipState = pathStates[jobIndex];
     const float3 O = ipState.O;
@@ -453,13 +454,17 @@ __global__ void shadeNRCKernel(
 			const float3 sampledBSDF = EvaluateBSDF( shadingData, fN /* * faceDir */, T, D * -1.0f, L, bsdfPdf );
 			{
 				// add fire-and-forget shadow ray to the connections buffer
+                float3 contribution = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf));
+                FIXNAN_FLOAT3(contribution);
+                CLAMPINTENSITY;
+
 				const uint shadowRayIdx = atomicAdd( &counters->shadowRays, 1 ); // compaction
 				InferenceConnState icState;
                 icState.O = SafeOrigin( I, L, N, geometryEpsilon );
                 icState.pathIdx = pathIdx;
                 icState.D = L;
                 icState.dist = dist - 2 * geometryEpsilon;
-                icState.directLum = throughput * sampledBSDF * lightColor * (NdotL / (pickProb * lightPdf));
+                icState.directLum = contribution;
                 icState.pixelIdx = pixelIdx;
                 
                 connections[shadowRayIdx] = icState;
@@ -468,11 +473,11 @@ __global__ void shadeNRCKernel(
     }
 
     // cap at maxium path length
-	if (pathLength == MAXPATHLENGTH - 1) {
-        // TODO: figure out how to lookup the net, since
-        // the contribution factor is puzzling
-        return;
-    }
+	// if (pathLength == NRC_FULL_MAX_PATHLENGTH - 1) {
+    //     // TODO: figure out how to lookup the net, since
+    //     // the contribution factor is puzzling
+    //     return;
+    // }
 
     // evaluate bsdf to obtain direction for next path segment
 	float3 R;
@@ -483,8 +488,14 @@ __global__ void shadeNRCKernel(
 
     const float p = ((flags & S_SPECULAR) || ((flags & S_BOUNCED) == 0)) ? 1 : SurvivalProbability( bsdf );
 
-    if (newBsdfPdf < EPSILON || isnan( newBsdfPdf ) || p < RandomFloat(seed)) {
-        
+    if (newBsdfPdf < EPSILON || isnan( newBsdfPdf )) {
+        // TODO: better estimation?
+
+        return;
+    }
+
+    if (pathLength == NRC_FULL_MAX_PATHLENGTH - 1 || p < RandomFloat(seed)) {
+
         const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
         NRCNetInferenceInput &iInput = inferenceInput[infIdx];
         
@@ -504,7 +515,7 @@ __global__ void shadeNRCKernel(
         // iInput.dummies[0] = iInput.dummies[1] = 0.0f;
 
         inferencePixelIndices[infIdx] = pixelIdx;
-        inferencePixelContribs[infIdx] = throughput;
+        inferencePixelContribs[infIdx] = throughput * bsdf * abs(dot(fN, R)) / newBsdfPdf;
 
         return;
     }
