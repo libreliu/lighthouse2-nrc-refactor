@@ -4,6 +4,8 @@ project(lighthouse2 LANGUAGES C CXX CUDA)
 option(OPTION_CUDA_DEBUG_FULL "Enable -G for all cuda codes" ON)
 find_package(CUDAToolkit)
 
+message(WARNING ${CUDAToolkit_BIN_DIR})
+
 # Used for zlib to disable cmake installs 
 set(SKIP_INSTALL_ALL ON)
 
@@ -23,7 +25,7 @@ include(CPack)
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/apps/_shareddata" DESTINATION "apps/")
 
 # nrcapp
-install(TARGETS nrcapp DESTINATION "apps/nrcapp")
+install(TARGETS nrcapp DESTINATION "apps/nrcapp/")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/apps/nrcapp/data" DESTINATION "apps/nrcapp/")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/apps/nrcapp/shaders" DESTINATION "apps/nrcapp/")
 install(FILES "${CMAKE_SOURCE_DIR}/apps/nrcapp/camera.xml" DESTINATION "apps/nrcapp/")
@@ -35,5 +37,17 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/RenderCore_Optix7NRC" DESTINATION "li
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/CUDA" DESTINATION "lib/")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/RenderSystem" DESTINATION "lib/")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/lib/Optix7" DESTINATION "lib/")
+
+# nvrtc (used by optix7nrc)
+file(GLOB NVRTC_DLLS "${CUDAToolkit_BIN_DIR}/nvrtc*.dll")
+
+message(STATUS "NVRTC Dlls collected:")
+foreach(str ${NVRTC_DLLS})
+    message(STATUS "- ${str}")
+endforeach()
+
+install(FILES ${NVRTC_DLLS} DESTINATION "apps/nrcapp/")
+
+# install(IMPORTED_RUNTIME_ARTIFACTS RenderCore_Optix7NRC DESTINATION "apps/nrcapp")
 
 endif()
