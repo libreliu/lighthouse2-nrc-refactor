@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(lighthouse2 LANGUAGES C CXX CUDA)
 
 option(OPTION_CUDA_DEBUG_FULL "Enable -G for all cuda codes" ON)
-find_package(CUDAToolkit)
+find_package(CUDAToolkit REQUIRED CONFIG HINTS "etc/")
 
 # Used for zlib to disable cmake installs 
 set(SKIP_INSTALL_ALL ON)
