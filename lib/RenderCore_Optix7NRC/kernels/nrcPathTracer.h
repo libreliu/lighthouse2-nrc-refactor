@@ -44,6 +44,7 @@ __global__ void shadeTrainKernel(
 	if (jobIndex >= pathCount) return;
 
     const float4 hitData = hits[jobIndex];
+    hits[jobIndex].z = __int_as_float(-1);  // reset for next query
     const TrainPathState& tpState = trainPathStates[jobIndex];
     const float3 O = tpState.O;
     uint flags = tpState.flags;
@@ -269,6 +270,7 @@ __global__ void shadeNRCOnlyKernel(
 	if (jobIndex >= pathCount) return;
 
     const float4 hitData = hits[jobIndex];
+    hits[jobIndex].z = __int_as_float(-1);  // reset for next query
 
     const InferencePathState& ipState = pathStates[jobIndex];
     const float3 O = ipState.O;

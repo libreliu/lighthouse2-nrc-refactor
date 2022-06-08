@@ -26,7 +26,7 @@ __global__ void NRCTCNN_TraceBufToTrainBuffer(
     const NRCTraceBufComponent &comp = trainTraceBuffer[elemIdx].traceComponent[pLenIdx];
     
     // Valid component have non-zero traceFlag
-    if (comp.traceFlags == 0) {
+    if (comp.traceFlags == 0 || comp.traceFlags == NRC_TRACEFLAG_HIT_SKYBOX) {
         return;
     }
 
