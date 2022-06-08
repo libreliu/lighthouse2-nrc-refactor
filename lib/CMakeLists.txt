@@ -3,7 +3,8 @@ add_library(Common-Libs INTERFACE)
 target_include_directories(Common-Libs INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # For tiny-cuda-nn
-set(ENV{TCNN_CUDA_ARCHITECTURES} "75")
+set(CUDA_VERSION ${CUDAToolkit_VERSION})
+set(ENV{TCNN_CUDA_ARCHITECTURES} "75;86")
 
 # Specific target libraries to build
 add_subdirectory(ann)

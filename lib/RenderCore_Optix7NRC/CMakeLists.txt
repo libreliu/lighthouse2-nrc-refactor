@@ -36,7 +36,7 @@ if (OPTION_CUDA_DEBUG_FULL)
     )
 endif()
 
-set_target_properties(RenderCore_Optix7NRC PROPERTIES CUDA_ARCHITECTURES "75")
+set_target_properties(RenderCore_Optix7NRC PROPERTIES CUDA_ARCHITECTURES "75;86")
 target_include_directories(RenderCore_Optix7NRC PUBLIC 
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
     ${CMAKE_CURRENT_SOURCE_DIR}    
