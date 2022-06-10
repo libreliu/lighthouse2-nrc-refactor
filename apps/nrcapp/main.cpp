@@ -82,6 +82,7 @@ static Shader* shader = 0;
 static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
 static bool running = true;
 static std::bitset<1024> keystates;
+static bool enablePerfStats = false;
 
 static std::chrono::steady_clock::time_point lastTP;
 static ScrollingBuffer lossBuf;
@@ -286,6 +287,22 @@ void DrawUI() {
 	ImGui::SliderFloat( "brightness", &renderer->GetCamera()->brightness, 0, 0.5f );
 	ImGui::SliderFloat( "contrast", &renderer->GetCamera()->contrast, 0, 0.5f );
 	ImGui::SliderFloat( "gamma", &renderer->GetCamera()->gamma, 1, 2.5f );
+	ImGui::End();
+
+	ImGui::Begin("Performance Statistics", 0);
+
+	// NOTE: may generate lots of cuda error invalid resource handle
+	// while calling to determine elapsed time
+	// These type of errors are generally non-sticky, but may
+	// break GEMM codes since they may fail to check & a problem
+	// for compute-santizer based debugging
+	// So, open only if users requested
+	ImGui::Checkbox("Perf Stats", &enablePerfStats);
+
+	if (enablePerfStats) {
+		std::string perfData = renderer->GetSettingStringExt("perfStats");
+		ImGui::Text("%s", perfData.c_str());
+	}
 	ImGui::End();
 
 	ImPlot::ShowDemoWindow();

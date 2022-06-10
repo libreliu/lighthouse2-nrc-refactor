@@ -394,7 +394,25 @@ void RenderCore::Init()
 		cudaEventCreate( &shadeEnd[i] );
 		cudaEventCreate( &traceStart[i] );
 		cudaEventCreate( &traceEnd[i] );
+		cudaEventCreate(&trainShadowStart[i]);
+		cudaEventCreate(&trainShadowEnd[i]);
+		cudaEventCreate(&infShadowStart[i]);
+		cudaEventCreate(&infShadowEnd[i]);
 	}
+
+	for (int i = 0; i < NRC_MAX_TRAIN_PATHLENGTH; i++) {
+		cudaEventCreate(&trainTraceStart[i]);
+		cudaEventCreate(&trainTraceEnd[i]);
+		cudaEventCreate(&trainShadeStart[i]);
+		cudaEventCreate(&trainShadeEnd[i]);
+	}
+
+	cudaEventCreate(&trainTraceProcStart);
+	cudaEventCreate(&trainTraceProcEnd);
+	cudaEventCreate(&trainNetStart);
+	cudaEventCreate(&trainNetEnd);
+	cudaEventCreate(&infNetStart);
+	cudaEventCreate(&infNetEnd);
 	cudaEventCreate( &shadowStart );
 	cudaEventCreate( &shadowEnd );
 	// create events for worker thread communication
@@ -1321,6 +1339,35 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 	return false;
 }
 
+std::string RenderCore::GetPerfStats() {
+	std::ostringstream ss;
+	double timeSum = 0.0, temp;
+
+#define NRC_TIME_ADD(x) ((temp = x,timeSum+=temp,temp))
+
+	if (renderMode == NRC_FULL) {
+		for (size_t i = 0; i < NRC_MAX_TRAIN_PATHLENGTH; i++) {
+			ss << "trainTrace[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(trainTraceStart[i], trainTraceEnd[i])) * 1000 << " ms\n";
+			ss << "trainShade[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(trainShadeStart[i], trainShadeEnd[i])) * 1000 << " ms\n";
+			ss << "trainShadow[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(trainShadowStart[i], trainShadowEnd[i])) * 1000 << " ms\n";
+		}
+
+		ss << "trainTraceProc: " << NRC_TIME_ADD(CUDATools::Elapsed(trainTraceProcStart, trainTraceProcEnd)) * 1000 << " ms\n";
+		ss << "trainNet: " << NRC_TIME_ADD(CUDATools::Elapsed(trainNetStart, trainNetEnd)) * 1000 << " ms\n";
+
+		for (size_t i = 0; i < MAXPATHLENGTH; i++) {
+			ss << "trace[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(traceStart[i], traceEnd[i])) * 1000 << " ms\n";
+			ss << "shade[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(shadeStart[i], shadeEnd[i])) * 1000 << " ms\n";
+			ss << "shadow[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(infShadowStart[i], infShadowEnd[i])) * 1000 << " ms\n";
+		}
+		ss << "infNet: " << NRC_TIME_ADD(CUDATools::Elapsed(infNetStart, infNetEnd)) * 1000 << " ms\n";
+	}
+
+	ss << "Total: " << timeSum * 1000 << " ms\n";
+	ss << "Estimated FPS: " << (1.0 / timeSum) << "\n";
+	return ss.str();
+}
+
 // GetSettingStringExt: defaults to ""
 std::string RenderCore::GetSettingStringExt( const char* name ) {
 	if (!strcmp(name, "auxiliaryRenderTargets")) {
@@ -1335,6 +1382,8 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return std::to_string(lastProcessedRays);
 	} else if (!strcmp(name, "nrcMaxTrainPathLength")) {
 		return std::to_string(NRC_MAX_TRAIN_PATHLENGTH);
+	} else if (!strcmp(name, "perfStats")) {
+		return GetPerfStats();
 	}
 
 	return "";
@@ -1674,17 +1723,20 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		cudaMemcpy((void*)nrcParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice);
 
 		// do trace
+		CHK_CUDA(cudaEventRecord(trainTraceStart[tpLength]));
 		if (tpLength == 0) {
 			CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsPrimary, sizeof( Params ), &sbt, trainRayCount, 1, 1 ) );
 		} else {
 			CHK_OPTIX( optixLaunch( pipeline, 0, nrcParamsSecondary, sizeof( Params ), &sbt, trainRayCount, 1, 1 ) );
 		}
+		CHK_CUDA(cudaEventRecord(trainTraceEnd[tpLength]));
 		
 		// do shade
 		if (tpLength == 0) {
 			InitCountersForExtend(nrcNumInitialTrainingRays);
 		}
 		
+		CHK_CUDA(cudaEventRecord(trainShadeStart[tpLength]));
 		shadeTrain(
 			trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr(), trainRayCount,
 			trainPathStateBuffer[tpLength % 2 == 0 ? 1 : 0]->DevPtr(),
@@ -1693,14 +1745,17 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, tpLength,
 			scrwidth, scrheight, view.spreadAngle
 		);
+		CHK_CUDA(cudaEventRecord(trainShadeEnd[tpLength]));
 
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
 
 		// trace shadow ray (TODO: performance improvement)
+		CHK_CUDA(cudaEventRecord(trainShadowStart[tpLength]));
 		if (counters.shadowRays > 0) {
 			CHK_OPTIX(optixLaunch(pipeline, 0, nrcParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1));
 		}
+		CHK_CUDA(cudaEventRecord(trainShadowEnd[tpLength]));
 
 		trainRayCount = counters.extensionRays;
 
@@ -1710,7 +1765,9 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 	}
 
 	// TODO: add an option?
+	CHK_CUDA(cudaEventRecord(trainTraceProcStart));
 	nrcTraceBufPostprocess(trainTraceBuffer->DevPtr(), nrcNumInitialTrainingRays);
+	CHK_CUDA(cudaEventRecord(trainTraceProcEnd));
 
 	// DebugView
 	if (auxRTMgr.isSetupAndInterested("traceBufDRefl")) {
@@ -1740,11 +1797,13 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 	}
 
 	// train
+	CHK_CUDA(cudaEventRecord(trainNetStart));
 	if (nrcTrainingEnable) {
 		int trainBatchSize = nrcNumInitialTrainingRays;
 		lastProcessedRays = nrcNet->Preprocess(trainTraceBuffer, nrcNumInitialTrainingRays, 1);
 		lastLoss = nrcNet->Train(256, 1);
 	}
+	CHK_CUDA(cudaEventRecord(trainNetEnd));
 
 	CHK_CUDA(cudaDeviceSynchronize());
 
@@ -1768,6 +1827,7 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		params.phase = Params::SPAWN_INF_SHADOW;
 		cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
 
+		CHK_CUDA(cudaEventRecord(traceStart[pathLen]));
 		if (pathLen == 0) {
 			CHK_OPTIX(
 				optixLaunch(pipeline, 0, infParamsPrimary, sizeof(Params), &sbt, params.scrsize.x, params.scrsize.y * scrspp, 1)
@@ -1777,7 +1837,9 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 				optixLaunch(pipeline, 0, infParamsSecondary, sizeof(Params), &sbt, pathCount, 1, 1)
 			);
 		}
+		CHK_CUDA(cudaEventRecord(traceEnd[pathLen]));
 		
+		CHK_CUDA(cudaEventRecord(shadeStart[pathLen]));
 		shadeNRC(
 			accumulator->DevPtr(),
 			infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr(), pathCount,
@@ -1791,6 +1853,7 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			infPixelIndices->DevPtr(),
 			infPixelContribs->DevPtr()
 		);
+		CHK_CUDA(cudaEventRecord(shadeEnd[pathLen]));
 
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
@@ -1798,6 +1861,7 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		pathCount = counters.extensionRays;
 
 		// trace shadow ray
+		CHK_CUDA(cudaEventRecord(infShadowStart[pathLen]));
 		if (counters.shadowRays > 0) {
 			CHK_OPTIX(
 				optixLaunch(pipeline, 0, infParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1)
@@ -1806,6 +1870,7 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			counterBuffer->HostPtr()[0].shadowRays = 0;
 			counterBuffer->CopyToDevice();
 		}
+		CHK_CUDA(cudaEventRecord(infShadowEnd[pathLen]));
 
 		if (pathCount == 0) {
 			break;
@@ -1828,6 +1893,7 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 	}
 
 	// do inference
+	CHK_CUDA(cudaEventRecord(infNetStart));
 	if (*numInferenceRays->HostPtr() > 0) {
 		infOutputBuffer->Clear(ON_DEVICE);
 		nrcNet->Inference(infInputBuffer, *numInferenceRays->HostPtr(), infOutputBuffer);
@@ -1839,6 +1905,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			infPixelContribs->DevPtr()
 		);
 	}
+	CHK_CUDA(cudaDeviceSynchronize());
+	CHK_CUDA(cudaEventRecord(infNetEnd));
 
 	if (auxRTMgr.isSetupAndInterested("infOutputBuffer")) {
 		auto rtBufPtr = auxRTMgr.getAssociatedBuffer("infOutputBuffer");
