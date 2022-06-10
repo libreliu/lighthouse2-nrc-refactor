@@ -156,6 +156,7 @@ private:
 	cudaEvent_t shadowStart, shadowEnd;
 
 	// == NRC Added ==
+	cudaEvent_t updateBVHStart, updateBVHEnd;
 	cudaEvent_t trainNetStart, trainNetEnd;
 	cudaEvent_t trainTraceStart[NRC_MAX_TRAIN_PATHLENGTH], trainTraceEnd[NRC_MAX_TRAIN_PATHLENGTH];
 	cudaEvent_t trainShadeStart[NRC_MAX_TRAIN_PATHLENGTH], trainShadeEnd[NRC_MAX_TRAIN_PATHLENGTH];
