@@ -80,6 +80,7 @@ static GLTexture* renderTarget = 0;
 static std::vector<RenderTarget> auxRenderTargets;
 static Shader* shader = 0;
 static uint scrwidth = 0, scrheight = 0, car = 0, scrspp = 1;
+static bool carRotEnable = false;
 static bool running = true;
 static std::bitset<1024> keystates;
 static bool enablePerfStats = false;
@@ -114,6 +115,18 @@ void PrepareScene()
 	int lightQuad = renderer->AddQuad( make_float3( 0, -1, 0 ), make_float3( 0, 26.0f, 0 ), 6.9f, 6.9f, lightMat );
 	renderer->AddInstance( lightQuad );
 	car = renderer->AddInstance( renderer->AddMesh( "legocar.obj", "../_shareddata/", 10.0f ) );
+	carRotEnable = true;
+}
+
+// void PrepareSceneZeroDay() {
+// 	renderer->AddScene("Measure_seven.glb", "../_shareddata/");
+// }
+
+void PrepareSceneDTS() {
+	renderer->AddScene("DTS_nrc.glb", "../_shareddata/");
+	//renderer->AddPointLight(make_float3(5.62, 1.22, -0.47), make_float3(100));
+	renderer->AddPointLight(make_float3(5.9098, -5.4423, 1.5712), make_float3(1));
+	renderer->AddPointLight(make_float3(5.92, 1.73, 6.09), make_float3(1));
 }
 
 //  +-----------------------------------------------------------------------------+
@@ -153,42 +166,50 @@ void DrawUI() {
 	lastTP = current;
 	ImGui::Text("FPS: %lf", fps);
 
-	std::string hint = "CurrentRT: " + currentRT;
-	ImGui::Text(hint.c_str());
-	if (ImGui::Button("result")) {
-		currentRT = "result";
-	} else {
-		for (size_t i = 0; i < auxRenderTargets.size(); i++) {
-			auto &rt = auxRenderTargets[i];
-			ImGui::PushID(i);
-			if (ImGui::Button(rt.rtName.c_str())) {
-				if (currentRT != "result") {
-					renderer->SettingStringExt("clearAuxTargetInterest", currentRT.c_str());
+	// RTSwitch
+	{
+		std::string hint = "CurrentRT: " + currentRT;
+		ImGui::Text(hint.c_str());
+		if (ImGui::Button("result")) {
+			currentRT = "result";
+		} else {
+			for (size_t i = 0; i < auxRenderTargets.size(); i++) {
+				auto &rt = auxRenderTargets[i];
+				ImGui::PushID(i);
+				if (ImGui::Button(rt.rtName.c_str())) {
+					if (currentRT != "result") {
+						renderer->SettingStringExt("clearAuxTargetInterest", currentRT.c_str());
+					}
+					currentRT = rt.rtName;
+					renderer->SettingStringExt("setAuxTargetInterest", currentRT.c_str());
 				}
-				currentRT = rt.rtName;
-				renderer->SettingStringExt("setAuxTargetInterest", currentRT.c_str());
+				ImGui::SameLine();
+				if (ImGui::Button(rt.accumulative ? "UnAccu" : "Accu")) {
+					if (rt.accumulative)
+						renderer->SettingStringExt("clearAuxTargetAccumulative", rt.rtName.c_str());
+					else
+						renderer->SettingStringExt("setAuxTargetAccumulative", rt.rtName.c_str());
+					
+					rt.accumulative = !rt.accumulative;
+				}
+				ImGui::PopID();
 			}
-			ImGui::SameLine();
-			if (ImGui::Button(rt.accumulative ? "UnAccu" : "Accu")) {
-				if (rt.accumulative)
-					renderer->SettingStringExt("clearAuxTargetAccumulative", rt.rtName.c_str());
-				else
-					renderer->SettingStringExt("setAuxTargetAccumulative", rt.rtName.c_str());
-				
-				rt.accumulative = !rt.accumulative;
-			}
-			ImGui::PopID();
 		}
 	}
+	
 
 	ImGui::Separator();
 
-	if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0")) {
-		setRenderMode();
-		frameRendered = 0;
-		lossBuf.Erase();
-		processedRayBuf.Erase();
+	// RenderMode switch
+	{
+		if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0")) {
+			setRenderMode();
+			frameRendered = 0;
+			lossBuf.Erase();
+			processedRayBuf.Erase();
+		}
 	}
+
 
 	ImGui::Checkbox("Converge", &renderConverge);
 
@@ -208,6 +229,7 @@ void DrawUI() {
 		);
 	}
 
+	// numInitialTrainingRays
 	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
 		// value changed, notify
 		if (nrcNumInitialTrainingRays < 1) {
@@ -221,6 +243,7 @@ void DrawUI() {
 		renderer->SettingStringExt("nrcNumInitialTrainingRays", rayStr.c_str());
 	}
 	
+	// TrainVisLayer
 	if (ImGui::SliderInt("TrainVisLayer", &trainVisLayer, 0, nrcMaxTrainPathLength - 1)) {
 		std::string tvLayer = std::to_string(trainVisLayer);
 		bool success = renderer->SettingStringExt("trainVisLayer", tvLayer.c_str());
@@ -231,6 +254,7 @@ void DrawUI() {
 
 	ImGui::Separator();
 
+	// History buffer
 	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
 		static int history = 10.0f;
 		ImGui::SliderInt("Hist Disp Size", &history, 1, ScrollingBufferMaxSize - 1);
@@ -273,39 +297,46 @@ void DrawUI() {
 
 	ImGui::End();
 
-	ImGui::Begin( "Camera parameters", 0 );
-	float3 camPos = renderer->GetCamera()->transform.GetTranslation();
-	float3 camDir = renderer->GetCamera()->transform.GetForward();
-	ImGui::Text( "position: %5.2f, %5.2f, %5.2f", camPos.x, camPos.y, camPos.z );
-	ImGui::Text( "viewdir:  %5.2f, %5.2f, %5.2f", camDir.x, camDir.y, camDir.z );
-	ImGui::SliderFloat( "FOV", &renderer->GetCamera()->FOV, 10, 90 );
-	ImGui::SliderFloat( "aperture", &renderer->GetCamera()->aperture, 0, 0.025f );
-	ImGui::SliderFloat( "distortion", &renderer->GetCamera()->distortion, 0, 0.5f );
-	ImGui::SliderFloat( "focalDistance", &renderer->GetCamera()->focalDistance, 0, 100.0f );
-	ImGui::SliderFloat( "aspectRatio", &renderer->GetCamera()->aspectRatio, 0.1f, 10.0f );
-	ImGui::Combo( "tonemap", &renderer->GetCamera()->tonemapper, "clamp\0reinhard\0reinhard ext\0reinhard lum\0reinhard jodie\0uncharted2\0\0" );
-	ImGui::SliderFloat( "brightness", &renderer->GetCamera()->brightness, 0, 0.5f );
-	ImGui::SliderFloat( "contrast", &renderer->GetCamera()->contrast, 0, 0.5f );
-	ImGui::SliderFloat( "gamma", &renderer->GetCamera()->gamma, 1, 2.5f );
-	ImGui::End();
-
-	ImGui::Begin("Performance Statistics", 0);
-
-	// NOTE: may generate lots of cuda error invalid resource handle
-	// while calling to determine elapsed time
-	// These type of errors are generally non-sticky, but may
-	// break GEMM codes since they may fail to check & a problem
-	// for compute-santizer based debugging
-	// So, open only if users requested
-	ImGui::Checkbox("Perf Stats", &enablePerfStats);
-
-	if (enablePerfStats) {
-		std::string perfData = renderer->GetSettingStringExt("perfStats");
-		ImGui::Text("%s", perfData.c_str());
+	// Cam parameters
+	{
+		ImGui::Begin( "Camera parameters", 0 );
+		float3 camPos = renderer->GetCamera()->transform.GetTranslation();
+		float3 camDir = renderer->GetCamera()->transform.GetForward();
+		ImGui::Text( "position: %5.2f, %5.2f, %5.2f", camPos.x, camPos.y, camPos.z );
+		ImGui::Text( "viewdir:  %5.2f, %5.2f, %5.2f", camDir.x, camDir.y, camDir.z );
+		ImGui::SliderFloat( "FOV", &renderer->GetCamera()->FOV, 10, 90 );
+		ImGui::SliderFloat( "aperture", &renderer->GetCamera()->aperture, 0, 0.025f );
+		ImGui::SliderFloat( "distortion", &renderer->GetCamera()->distortion, 0, 0.5f );
+		ImGui::SliderFloat( "focalDistance", &renderer->GetCamera()->focalDistance, 0, 100.0f );
+		ImGui::SliderFloat( "aspectRatio", &renderer->GetCamera()->aspectRatio, 0.1f, 10.0f );
+		ImGui::Combo( "tonemap", &renderer->GetCamera()->tonemapper, "clamp\0reinhard\0reinhard ext\0reinhard lum\0reinhard jodie\0uncharted2\0\0" );
+		ImGui::SliderFloat( "brightness", &renderer->GetCamera()->brightness, 0, 0.5f );
+		ImGui::SliderFloat( "contrast", &renderer->GetCamera()->contrast, 0, 0.5f );
+		ImGui::SliderFloat( "gamma", &renderer->GetCamera()->gamma, 1, 2.5f );
+		ImGui::End();
 	}
-	ImGui::End();
 
-	ImPlot::ShowDemoWindow();
+	// Query perf-stat string
+	{
+		ImGui::Begin("Performance Statistics", 0);
+
+		// NOTE: may generate lots of cuda error invalid resource handle
+		// while calling to determine elapsed time
+		// These type of errors are generally non-sticky, but may
+		// break GEMM codes since they may fail to check & a problem
+		// for compute-santizer based debugging
+		// So, open only if users requested
+		ImGui::Checkbox("Perf Stats", &enablePerfStats);
+
+		if (enablePerfStats) {
+			std::string perfData = renderer->GetSettingStringExt("perfStats");
+			ImGui::Text("%s", perfData.c_str());
+		}
+		ImGui::End();
+	}
+	
+
+	//ImPlot::ShowDemoWindow();
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
@@ -369,7 +400,9 @@ int main()
 	nrcRenderMode = nrcRenderModeSet::NRC_FULL;
 	setRenderMode();
 	// initialize scene
-	PrepareScene();
+	// PrepareScene();
+	// PrepareSceneZeroDay();
+	PrepareSceneDTS();
 	// set initial window size
 	ReshapeWindowCallback( 0, SCRWIDTH, SCRHEIGHT );
 	// enter main loop
@@ -380,6 +413,8 @@ int main()
 		// render
 		renderer->Render( renderConverge ? Converge : Restart );
 		frameRendered++;
+
+		// Scrolling buffer maintenance
 		if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
 			string lastLossStr = renderer->GetSettingStringExt("lastLoss");
 			float lastLoss = std::atof(lastLossStr.c_str());
@@ -393,11 +428,14 @@ int main()
 
 		// handle user input
 		HandleInput( 0.025f );
-		// minimal rigid animation example
-		static float r = 0;
-		mat4 M = mat4::RotateY( r * 2.0f ) * mat4::RotateZ( 0.2f * sinf( r * 8.0f ) ) * mat4::Translate( make_float3( 0, 5, 0 ) );
-		renderer->SetNodeTransform( car, M );
-		if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
+
+		if (carRotEnable) {
+			// minimal rigid animation example
+			static float r = 0;
+			mat4 M = mat4::RotateY( r * 2.0f ) * mat4::RotateZ( 0.2f * sinf( r * 8.0f ) ) * mat4::Translate( make_float3( 0, 5, 0 ) );
+			renderer->SetNodeTransform( car, M );
+			if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
+		}
 		
 		// finalize and present
 		shader->Bind();
