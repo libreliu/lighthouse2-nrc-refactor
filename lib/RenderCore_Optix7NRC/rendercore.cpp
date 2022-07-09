@@ -368,7 +368,7 @@ void RenderCore::Init()
 	// initialize NRC
 	InitNRC();
 	// render settings
-	stageClampValue( 10.0f );
+	stageClampValue( 1e20f );
 	// prepare counters for persistent threads
 	counterBuffer = new CoreBuffer<Counters>( 1, ON_DEVICE | ON_HOST );
 	SetCounters( counterBuffer->DevPtr() );

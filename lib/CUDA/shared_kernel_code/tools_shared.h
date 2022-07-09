@@ -212,7 +212,10 @@ LH2_DEVFUNC float3 SampleSmallSkydome( const float3& D )
 
 LH2_DEVFUNC float SurvivalProbability( const float3& albedo )
 {
-	return min( 1.0f, max( max( albedo.x, albedo.y ), albedo.z ) );
+	// return min( 1.0f, max( max( albedo.x, albedo.y ), albedo.z ) );
+	float albedoMax = max( max( albedo.x, albedo.y ), albedo.z );
+	float passMax = 0.8f;
+	return min( 1.0f, max(albedoMax, passMax) );
 }
 
 LH2_DEVFUNC float FresnelDielectricExact( const float3& wo, const float3& N, float eta )
