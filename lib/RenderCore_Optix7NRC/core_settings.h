@@ -26,8 +26,8 @@
 // #define CONSISTENTNORMALS	// consistent normal interpolation
 
 // nrc settings
-#define NRC_MAX_TRAIN_PATHLENGTH 6
-#define NRC_FULL_MAX_PATHLENGTH 6
+#define NRC_MAX_TRAIN_PATHLENGTH 12
+#define NRC_FULL_MAX_PATHLENGTH 12
 
 #define NRCNET_RESETMODE_UNIFORM 0
 

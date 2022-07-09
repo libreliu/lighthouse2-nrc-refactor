@@ -1823,13 +1823,15 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		CHK_CUDA(cudaEventRecord(trainShadowStart[tpLength]));
 		if (counters.shadowRays > 0) {
 			CHK_OPTIX(optixLaunch(pipeline, 0, nrcParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1));
-
-			counterBuffer->HostPtr()[0].shadowRays = 0;
-			counterBuffer->CopyToDevice();
 		}
 		CHK_CUDA(cudaEventRecord(trainShadowEnd[tpLength]));
 
 		trainRayCount = counters.extensionRays;
+
+		// clear counters
+		counterBuffer->HostPtr()[0].shadowRays = 0;
+		counterBuffer->HostPtr()[0].extensionRays = 0;
+		counterBuffer->CopyToDevice();
 
 		if (trainRayCount == 0) {
 			break;
