@@ -165,6 +165,9 @@ private:
 	cudaEvent_t infShadowStart[MAXPATHLENGTH], infShadowEnd[MAXPATHLENGTH];
 	cudaEvent_t infNetStart, infNetEnd;
 
+	// Some random stuff, not structuralized, but very convenient
+	std::string flexLogBuffer;
+
 	bool nrcTrainingEnable;
 	uint nrcNumInitialTrainingRays = 4096;
 	enum {

@@ -1057,6 +1057,7 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 	if (converge == Converge) firstConvergingFrame = false;
 	// do the actual rendering
 	renderTimer.reset();
+	flexLogBuffer.clear();
 	// if (async)
 	// {
 	// 	asyncRenderInProgress = true;
@@ -1116,6 +1117,9 @@ void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
 	coreStats.primaryRayCount = pathCount;
 	for (int pathLength = 1; pathLength <= MAXPATHLENGTH; pathLength++)
 	{
+		// log
+		flexLogBuffer += "pathCount[" + std::to_string(pathLength) + "]: " + std::to_string(pathCount) + "\n";
+
 		// generate / extend
 		cudaEventRecord( traceStart[pathLength - 1] );
 		if (pathLength == 1)
@@ -1148,16 +1152,25 @@ void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
 		cudaEventRecord( shadeEnd[pathLength - 1] );
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
+
+		// log
+		flexLogBuffer += "cumulativeShadowRayCount[" + std::to_string(pathLength) + "]: " + std::to_string(counters.shadowRays);
+
 		pathCount = counters.extensionRays;
 		if (pathCount == 0) break;
 		// trace shadow rays now if the next loop iteration could overflow the buffer.
 		uint maxShadowRays = connectionBuffer->GetSize() / 3;
-		if ((pathCount + counters.shadowRays) >= maxShadowRays) if (counters.shadowRays > 0)
+		if ((pathCount + counters.shadowRays) >= maxShadowRays && counters.shadowRays > 0)
 		{
 			CHK_OPTIX( optixLaunch( pipeline, 0, d_params[2], sizeof( Params ), &sbt, counters.shadowRays, 1, 1 ) );
 			counterBuffer->HostPtr()[0].shadowRays = 0;
 			counterBuffer->CopyToDevice();
+			
+			flexLogBuffer += " (overflow)\n";
+
 			printf( "WARNING: connection buffer overflowed.\n" ); // we should not have to do this; handled here to be conservative.
+		} else {
+			flexLogBuffer += "\n";
 		}
 	}
 	// connect to light sources
@@ -1396,8 +1409,17 @@ std::string RenderCore::GetPerfStats() {
 		ss << "infNet: " << NRC_TIME_ADD(CUDATools::Elapsed(infNetStart, infNetEnd)) * 1000 << " ms\n";
 	}
 
+	// Clear CUDA error, the cutlass gemm requires a clean environment
+
+	cudaError_t lastErr = cudaGetLastError();
+	const char *err = CUDATools::decodeError(lastErr);
 	ss << "Total: " << timeSum * 1000 << " ms (Train: " << trainSum * 1000 << " ms)\n";
 	ss << "Estimated FPS: " << (1.0 / timeSum) << "\n";
+
+	ss << "\n";
+	ss << "lastErr: " << err << "\n";
+	ss << "FlexLog:" << flexLogBuffer;
+
 	return ss.str();
 }
 
@@ -1455,7 +1477,7 @@ void RenderCore::InitNRC() {
 
 	for (int i = 0; i < 2; i++) {
 		trainPathStateBuffer[i] = new CoreBuffer<TrainPathState>(
-			nrcNumInitialTrainingRays,
+			nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
 			ON_DEVICE
 		);
 	}
@@ -1801,6 +1823,9 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		CHK_CUDA(cudaEventRecord(trainShadowStart[tpLength]));
 		if (counters.shadowRays > 0) {
 			CHK_OPTIX(optixLaunch(pipeline, 0, nrcParamsShadow, sizeof(Params), &sbt, counters.shadowRays, 1, 1));
+
+			counterBuffer->HostPtr()[0].shadowRays = 0;
+			counterBuffer->CopyToDevice();
 		}
 		CHK_CUDA(cudaEventRecord(trainShadowEnd[tpLength]));
 

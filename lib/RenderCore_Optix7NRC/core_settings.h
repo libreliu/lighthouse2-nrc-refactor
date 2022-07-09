@@ -22,12 +22,12 @@
 
 // core-specific settings
 #define CLAMPFIREFLIES		// suppress fireflies by clamping
-#define MAXPATHLENGTH		3
+#define MAXPATHLENGTH		6
 // #define CONSISTENTNORMALS	// consistent normal interpolation
 
 // nrc settings
-#define NRC_MAX_TRAIN_PATHLENGTH 3
-#define NRC_FULL_MAX_PATHLENGTH 3
+#define NRC_MAX_TRAIN_PATHLENGTH 6
+#define NRC_FULL_MAX_PATHLENGTH 6
 
 #define NRCNET_RESETMODE_UNIFORM 0
 
