@@ -126,7 +126,7 @@ void PrepareSceneDTS() {
 	renderer->AddScene("DTS_nrc.glb", "../_shareddata/");
 	//renderer->AddPointLight(make_float3(5.62, 1.22, -0.47), make_float3(100));
 	//renderer->AddPointLight(make_float3(5.9098, -5.4423, 1.5712), make_float3(1));
-	renderer->AddPointLight(make_float3(5.92, 1.73, 6.09), make_float3(100));
+	// renderer->AddPointLight(make_float3(5.92, 1.73, 6.09), make_float3(100));
 }
 
 //  +-----------------------------------------------------------------------------+

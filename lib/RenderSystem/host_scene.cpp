@@ -358,6 +358,39 @@ int HostScene::AddScene( const char* sceneFile, const char* dir, const mat4& tra
 		newMesh->ID = (int)i + meshBase;
 		meshPool.push_back( newMesh );
 	}
+	// convert khr lights
+	// khr lights array idx -> (punctualLightType, punctualLightID)
+	std::map<int, std::pair<int, int>> khrLightsMap;
+	auto khrLightsExt = gltfModel.extensions.find("KHR_lights_punctual");
+	if (khrLightsExt != gltfModel.extensions.end()) {
+		auto &khrLightsArr = khrLightsExt->second.Get("lights").Get<tinygltf::Value::Array>();
+
+		for (int khrLightID = 0; khrLightID < khrLightsArr.size(); khrLightID++) {
+			auto &light = khrLightsArr[khrLightID];
+			if (light.Get("type").Get<std::string>() == "point") {
+				float intensity = (float) light.Get("intensity").GetNumberAsDouble();
+				auto &colorArray = light.Get("color").Get<tinygltf::Value::Array>();
+
+				float3 color = make_float3(
+					(float)colorArray[0].GetNumberAsDouble(),
+					(float)colorArray[1].GetNumberAsDouble(),
+					(float)colorArray[2].GetNumberAsDouble()
+				);
+
+				// pos: to be patched inside host_node.cpp
+				int pointLightID = AddPointLight(make_float3(0), color * intensity);
+				printf("[SceneDebug] added khr point light %d, pointLight ID = %d\n",
+					khrLightID, pointLightID
+				);
+
+				khrLightsMap[khrLightID] = std::make_pair(
+					1,
+					pointLightID
+				);
+			}
+		}
+	}
+
 	// push an extra node that holds a transform for the gltf scene
 	HostNode* newNode = new HostNode();
 	newNode->localTransform = transform;
@@ -367,7 +400,7 @@ int HostScene::AddScene( const char* sceneFile, const char* dir, const mat4& tra
 	for (size_t s = gltfModel.nodes.size(), i = 0; i < s; i++)
 	{
 		tinygltf::Node& gltfNode = gltfModel.nodes[i];
-		HostNode* newNode = new HostNode( gltfNode, nodeBase, meshBase, skinBase );
+		HostNode* newNode = new HostNode( gltfNode, nodeBase, meshBase, skinBase, khrLightsMap );
 		newNode->ID = (int)nodePool.size();
 		nodePool.push_back( newNode );
 	}

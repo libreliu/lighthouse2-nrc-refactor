@@ -33,9 +33,9 @@ static HostTri TransformedHostTri( HostTri* tri, mat4 T )
 //  |  HostNode::HostNode                                                         |
 //  |  Constructors.                                                        LH2'19|
 //  +-----------------------------------------------------------------------------+
-HostNode::HostNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase )
+HostNode::HostNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase, std::map<int, std::pair<int, int>> &khrLightsMap )
 {
-	ConvertFromGLTFNode( gltfNode, nodeBase, meshBase, skinBase );
+	ConvertFromGLTFNode( gltfNode, nodeBase, meshBase, skinBase, khrLightsMap );
 }
 
 HostNode::HostNode( const int meshIdx, const mat4& transform )
@@ -76,7 +76,7 @@ HostNode::~HostNode()
 //  |  HostNode::ConvertFromGLTFNode                                              |
 //  |  Create a node from a GLTF node.                                      LH2'19|
 //  +-----------------------------------------------------------------------------+
-void HostNode::ConvertFromGLTFNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase )
+void HostNode::ConvertFromGLTFNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase, std::map<int, std::pair<int, int>> &khrLightsMap )
 {
 	// copy node name
 	name = gltfNode.name;
@@ -119,6 +119,20 @@ void HostNode::ConvertFromGLTFNode( const tinygltfNode& gltfNode, const int node
 	}
 	// if we got T, R and/or S, reconstruct final matrix
 	if (buildFromTRS) UpdateTransformFromTRS();
+
+	// check if we have KHR_lights_punctual attached
+	auto khrLightsObj = gltfNode.extensions.find("KHR_lights_punctual");
+	if (khrLightsObj != gltfNode.extensions.end()) {
+		// ID in KHR_lights_punctual extension array
+		int punctualLightExtID = khrLightsObj->second.Get("light").Get<int>();
+		
+		std::tie(punctualLightType, punctualLightId) = khrLightsMap[punctualLightExtID];
+		printf("[SceneDebug] assigned type=%d, id=%d after looking up for khr light %d\n",
+			punctualLightType, punctualLightId,
+			punctualLightExtID
+		);
+	}
+
 	// process light emitting surfaces
 	PrepareLights();
 }
@@ -192,6 +206,12 @@ bool HostNode::Update( mat4& T, vector<int>& instances, int& posInInstanceArray 
 		}
 		posInInstanceArray++;
 	}
+
+	// punctual lights
+	if (punctualLightType != 0) {
+		UpdatePunctualLights();
+	}
+
 	// all done.
 	return instancesChanged;
 }
@@ -251,6 +271,20 @@ void HostNode::UpdateLights()
 		HostTri transformedTri = TransformedHostTri( tri, combinedTransform );
 			*HostScene::triLights[tri->ltriIdx] = HostTriLight( &transformedTri, i, ID );
 		}
+	}
+}
+
+void HostNode::UpdatePunctualLights() {
+	// check for KHR_lights_punctual
+	// TODO: these lights currently does not support animation
+	if (punctualLightType == 1) {
+		float3 lightPos = combinedTransform.GetTranslation();
+		HostScene::pointLights[punctualLightId]->position = lightPos;
+
+		// printf("[SceneDebug] fixup point light %d to be at (%f, %f, %f)\n",
+		// 	punctualLightId,
+		// 	lightPos.x, lightPos.y, lightPos.z
+		// );
 	}
 }
 

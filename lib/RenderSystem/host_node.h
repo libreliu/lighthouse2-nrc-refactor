@@ -31,14 +31,15 @@ public:
 	// constructor / destructor
 	HostNode() = default;
 	HostNode( const int meshIdx, const mat4& transform );
-	HostNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase );
+	HostNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase, std::map<int, std::pair<int, int>> &khrLightsMap );
 	~HostNode();
 	// methods
-	void ConvertFromGLTFNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase );
+	void ConvertFromGLTFNode( const tinygltfNode& gltfNode, const int nodeBase, const int meshBase, const int skinBase, std::map<int, std::pair<int, int>>& khrLightsMap );
 	bool Update( mat4& T, vector<int>& instances, int& instanceIdx );	// recursively update the transform of this node and its children
 	void UpdateTransformFromTRS();		// process T, R, S data to localTransform
 	void PrepareLights();				// detects emissive triangles and creates light triangles for them
 	void UpdateLights();				// when the transform changes, this fixes the light triangles
+	void UpdatePunctualLights();
 	// data members
 	string name;						// node name as specified in the GLTF file
 	mat4 combinedTransform;				// transform combined with ancestor transforms
@@ -50,6 +51,9 @@ public:
 	int ID = -1;						// unique ID for the node: position in node array
 	int meshID = -1;					// id of the mesh this node refers to (if any, -1 otherwise)
 	int skinID = -1;					// id of the skin this node refers to (if any, -1 otherwise)
+	int punctualLightType = 0;          // has KHR_lights_punctual
+										// 0 - disable, 1 - point light
+    int punctualLightId = 0;
 	vector<float> weights;				// morph target weights
 	bool hasLights = false;				// true if this instance uses an emissive material
 	bool morphed = false;				// node mesh should update pose
