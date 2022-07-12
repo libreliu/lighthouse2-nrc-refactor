@@ -75,6 +75,15 @@ bool renderConverge = false;
 int trainVisLayer = 0;
 int nrcMaxTrainPathLength = 0;
 
+enum {
+	STOP,
+	FREESTANDING,
+	RENDER_TO_TARGET_CLOCK,
+	RENDER_TO_TARGET_FRAME
+} renderControl;
+int targetFrame;
+double targetClock; // in seconds
+
 static RenderAPI* renderer = 0;
 static GLTexture* renderTarget = 0;
 static std::vector<RenderTarget> auxRenderTargets;
@@ -165,6 +174,46 @@ void DrawUI() {
 	double fps = 1.0 / elapsed_seconds.count();
 	lastTP = current;
 	ImGui::Text("FPS: %lf", fps);
+
+	// Render Control
+	{
+		static float targetClockInput = 2.0;
+		static int targetFrameInput = 100;
+		if (renderControl == STOP) {
+			ImGui::Text("RenderStatus: STOP");
+
+			ImGui::DragFloat("Duration", &targetClockInput, 0.5f, 0.0f, 100.0f, "%.3f secs");
+			if (ImGui::Button("Run for specified duration")) {
+				// todo - implement me
+				targetClock = targetClockInput;
+				renderControl = RENDER_TO_TARGET_CLOCK;
+			}
+
+		} else if (renderControl == FREESTANDING) {
+			ImGui::Text("RenderStatus: FREESTANDING");
+
+			if (ImGui::Button("STOP")) {
+				renderControl = STOP;
+			}
+		} else if (renderControl == RENDER_TO_TARGET_CLOCK) {
+			ImGui::Text("RenderStatus: RENDER_TO_TARGET_CLOCK");
+
+			ImGui::Text("Time remaining: %f", targetClock);
+			if (ImGui::Button("STOP")) {
+				renderControl = STOP;
+			} else {
+				targetClock -= elapsed_seconds.count();
+				if (targetClock < 0) {
+					renderControl = STOP;
+				}
+			}
+
+		} else if (renderControl == RENDER_TO_TARGET_FRAME) {
+			
+		}
+	}
+
+	ImGui::Separator();
 
 	// RTSwitch
 	{
@@ -399,6 +448,8 @@ int main()
 	// nrcRenderMode = nrcRenderModeSet::NRC_PRIMARY;
 	nrcRenderMode = nrcRenderModeSet::NRC_FULL;
 	setRenderMode();
+	// initialize time counter
+	lastTP = std::chrono::steady_clock::now();
 	// initialize scene
 	// PrepareScene();
 	// PrepareSceneZeroDay();
@@ -408,55 +459,59 @@ int main()
 	// enter main loop
 	while (!glfwWindowShouldClose( window ))
 	{
-		// update scene
-		renderer->SynchronizeSceneData();
-		// render
-		renderer->Render( renderConverge ? Converge : Restart );
-		frameRendered++;
-
-		// Scrolling buffer maintenance
-		if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
-			string lastLossStr = renderer->GetSettingStringExt("lastLoss");
-			float lastLoss = std::atof(lastLossStr.c_str());
-
-			string lastProcessedRaysStr = renderer->GetSettingStringExt("lastProcessedRays");
-			int lastProcessedRays = std::atoi(lastProcessedRaysStr.c_str());
-
-			lossBuf.AddPoint(frameRendered, lastLoss);
-			processedRayBuf.AddPoint(frameRendered, lastProcessedRays);
-		}
-
-		// handle user input
-		HandleInput( 0.025f );
-
-		if (carRotEnable) {
-			// minimal rigid animation example
-			static float r = 0;
-			mat4 M = mat4::RotateY( r * 2.0f ) * mat4::RotateZ( 0.2f * sinf( r * 8.0f ) ) * mat4::Translate( make_float3( 0, 5, 0 ) );
-			renderer->SetNodeTransform( car, M );
-			if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
-		}
-		
-		// finalize and present
-		shader->Bind();
-		
-		if (currentRT == "result") {
-			shader->SetInputTexture( 0, "color", renderTarget );
+		if (renderControl == STOP) {
+			// no-op
 		} else {
-			bool rtFound = false;
-			for (auto &auxRT: auxRenderTargets) {
-				if (auxRT.rtName == currentRT) {
-					shader->SetInputTexture(0, "color", auxRT.texture.get());
-					rtFound = true;
-					break;
-				}
-			}
-			assert(rtFound);
-		}
-		shader->SetInputMatrix( "view", mat4::Identity() );
-		DrawQuad();
-		shader->Unbind();
+			// update scene
+			renderer->SynchronizeSceneData();
+			// render
+			renderer->Render( renderConverge ? Converge : Restart );
+			frameRendered++;
 
+			// Scrolling buffer maintenance
+			if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE) {
+				string lastLossStr = renderer->GetSettingStringExt("lastLoss");
+				float lastLoss = std::atof(lastLossStr.c_str());
+
+				string lastProcessedRaysStr = renderer->GetSettingStringExt("lastProcessedRays");
+				int lastProcessedRays = std::atoi(lastProcessedRaysStr.c_str());
+
+				lossBuf.AddPoint(frameRendered, lastLoss);
+				processedRayBuf.AddPoint(frameRendered, lastProcessedRays);
+			}
+
+			// handle user input
+			HandleInput( 0.025f );
+
+			if (carRotEnable) {
+				// minimal rigid animation example
+				static float r = 0;
+				mat4 M = mat4::RotateY( r * 2.0f ) * mat4::RotateZ( 0.2f * sinf( r * 8.0f ) ) * mat4::Translate( make_float3( 0, 5, 0 ) );
+				renderer->SetNodeTransform( car, M );
+				if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
+			}
+
+			// finalize and present
+			shader->Bind();
+			
+			if (currentRT == "result") {
+				shader->SetInputTexture( 0, "color", renderTarget );
+			} else {
+				bool rtFound = false;
+				for (auto &auxRT: auxRenderTargets) {
+					if (auxRT.rtName == currentRT) {
+						shader->SetInputTexture(0, "color", auxRT.texture.get());
+						rtFound = true;
+						break;
+					}
+				}
+				assert(rtFound);
+			}
+			shader->SetInputMatrix( "view", mat4::Identity() );
+			DrawQuad();
+			shader->Unbind();
+		}
+		
 		// shader
 		DrawUI();
 
