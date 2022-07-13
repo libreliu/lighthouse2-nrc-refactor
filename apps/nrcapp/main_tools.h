@@ -97,6 +97,8 @@ void InitGLFW()
 	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 5 );
 	glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
 	glfwWindowHint( GLFW_RESIZABLE, GL_TRUE );
+	// Use single buffering
+	glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 	if (!(window = glfwCreateWindow( SCRWIDTH, SCRHEIGHT, "LightHouse v2.0", nullptr, nullptr ))) exit( EXIT_FAILURE );
 	glfwMakeContextCurrent( window );
 	// register callbacks
@@ -120,7 +122,9 @@ void InitGLFW()
 	shader->SetInputMatrix( "view", mat4::Scale( make_float3( 0.1f * hscale, 0.1f, 1 ) ) );
 	DrawQuad();
 	shader->Unbind();
-	glfwSwapBuffers( window );
+	// Use single buffering instead of double buffering
+	// glfwSwapBuffers( window );
+	glFinish();
 	delete logo;
 	// we want a console window for text output
 	OpenConsole();

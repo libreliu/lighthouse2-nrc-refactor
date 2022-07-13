@@ -77,7 +77,7 @@ int nrcMaxTrainPathLength = 0;
 
 enum {
 	STOP,
-	FREESTANDING,
+	FREERUNNING,
 	RENDER_TO_TARGET_CLOCK,
 	RENDER_TO_TARGET_FRAME
 } renderControl;
@@ -186,11 +186,24 @@ void DrawUI() {
 			if (ImGui::Button("Run for specified duration")) {
 				// todo - implement me
 				targetClock = targetClockInput;
+				targetFrame = 0;
 				renderControl = RENDER_TO_TARGET_CLOCK;
 			}
 
-		} else if (renderControl == FREESTANDING) {
-			ImGui::Text("RenderStatus: FREESTANDING");
+			ImGui::DragInt("Frame", &targetFrameInput, 1.0f, 1, 4096, "%d frame");
+			if (ImGui::Button("Run for specified frame")) {
+				// todo - implement me
+				targetFrame = targetFrameInput;
+				targetClock = 0;
+				renderControl = RENDER_TO_TARGET_FRAME;
+			}
+
+			if (ImGui::Button("Freerunning")) {
+				renderControl = FREERUNNING;
+			}
+
+		} else if (renderControl == FREERUNNING) {
+			ImGui::Text("RenderStatus: FREERUNNING");
 
 			if (ImGui::Button("STOP")) {
 				renderControl = STOP;
@@ -198,18 +211,32 @@ void DrawUI() {
 		} else if (renderControl == RENDER_TO_TARGET_CLOCK) {
 			ImGui::Text("RenderStatus: RENDER_TO_TARGET_CLOCK");
 
+			ImGui::Text("Frame rendered: %d", targetFrame);
 			ImGui::Text("Time remaining: %f", targetClock);
 			if (ImGui::Button("STOP")) {
 				renderControl = STOP;
 			} else {
 				targetClock -= elapsed_seconds.count();
+				targetFrame++;
 				if (targetClock < 0) {
 					renderControl = STOP;
 				}
 			}
 
 		} else if (renderControl == RENDER_TO_TARGET_FRAME) {
-			
+			ImGui::Text("RenderStatus: RENDER_TO_TARGET_FRAME");
+
+			ImGui::Text("Time elapsed: %.3f secs", targetClock);
+			ImGui::Text("Frame remaining: %d", targetFrame);
+			if (ImGui::Button("STOP")) {
+				renderControl = STOP;
+			} else {
+				targetFrame -= 1;
+				targetClock += elapsed_seconds.count();
+				if (targetFrame <= 0) {
+					renderControl = STOP;
+				}
+			}
 		}
 	}
 
@@ -516,7 +543,10 @@ int main()
 		DrawUI();
 
 		// finalize
-		glfwSwapBuffers( window );
+		// Use single buffering instead of two, convenient for a rendering pause
+		// glfwSwapBuffers( window );
+		glFinish();
+		
 		glfwPollEvents();
 		if (!running) break; // esc was pressed
 	}
