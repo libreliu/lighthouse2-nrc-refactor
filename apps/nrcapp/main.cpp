@@ -175,6 +175,12 @@ void DrawUI() {
 	lastTP = current;
 	ImGui::Text("FPS: %lf", fps);
 
+	// VRAM check
+	{
+		std::string memInfo = renderer->GetSettingStringExt("cudaMemoryInfo");
+		ImGui::Text(memInfo.c_str());
+	}
+
 	// Render Control
 	{
 		static float targetClockInput = 2.0;

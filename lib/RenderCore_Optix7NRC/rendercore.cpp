@@ -1439,6 +1439,10 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return std::to_string(NRC_MAX_TRAIN_PATHLENGTH);
 	} else if (!strcmp(name, "perfStats")) {
 		return GetPerfStats();
+	} else if (!strcmp(name, "cudaMemoryInfo")) {
+		size_t memFree, memTotal;
+		CHK_CUDA(cudaMemGetInfo(&memFree, &memTotal));
+		return "VRAM: " + std::to_string(memFree / 1024.0 / 1024.0) + "MB Free / " + std::to_string(memTotal / 1024.0 / 1024.0) + "MB Total"; 
 	}
 
 	return "";
