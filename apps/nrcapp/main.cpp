@@ -68,7 +68,8 @@ enum nrcRenderModeSet {
 	ORIGINAL = 0,
 	REFERENCE,
 	NRC_PRIMARY,
-	NRC_FULL
+	NRC_FULL,
+	NRC_ENHANCED
 } nrcRenderMode;
 int frameRendered = 0;
 bool renderConverge = false;
@@ -107,6 +108,7 @@ void setRenderMode() {
 		case REFERENCE: modeStr = "REFERENCE"; break;
 		case NRC_PRIMARY: modeStr = "NRC_PRIMARY"; break;
 		case NRC_FULL: modeStr = "NRC_FULL"; break;
+		case NRC_ENHANCED: modeStr = "NRC_ENHANCED"; break;
 	}
 	renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
 }
@@ -284,7 +286,7 @@ void DrawUI() {
 
 	// RenderMode switch
 	{
-		if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0")) {
+		if (ImGui::Combo("render mode", (int*)&nrcRenderMode, "Original\0Reference\0NRCPrimary\0NRCFull\0NRCEnhanced\0")) {
 			setRenderMode();
 			frameRendered = 0;
 			lossBuf.Erase();

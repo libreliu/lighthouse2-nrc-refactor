@@ -1083,6 +1083,8 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 		// TODO: implement me
 		RenderImplNRCFull( view );
 		FinalizeRenderNRC();
+	} else if (renderMode == NRC_ENHANCED) {
+
 	}
 }
 void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
@@ -1333,6 +1335,8 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 			renderMode = NRC_PRIMARY;
 		} else if (!strcmp(value, "NRC_FULL")) {
 			renderMode = NRC_FULL;
+		} else if (!strcmp(value, "NRC_ENHANCED")) {
+			renderMode = NRC_ENHANCED;
 		}
 		return true;
 	} else if (!strcmp(name, "nrcTrainingEnable")) {
@@ -1999,6 +2003,14 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			view.distortion
 		);
 	}
+
+}
+
+// Trace with
+// 1. Self training w. realSampleFactor
+//    - Look up the net when finalize
+// 2. Path termination heuristics
+void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 
 }
 

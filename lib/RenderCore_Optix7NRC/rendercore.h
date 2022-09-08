@@ -174,7 +174,8 @@ private:
 		ORIGINAL,
 		REFERENCE,
 		NRC_PRIMARY,
-		NRC_FULL
+		NRC_FULL,
+		NRC_ENHANCED
 	} renderMode = ORIGINAL;
 	bool auxRTenabled = false;
 	enum {
@@ -209,6 +210,7 @@ private:
 	void ShutdownNRC();
 	void RenderImplNRCPrimary(const ViewPyramid &view);
 	void RenderImplNRCFull(const ViewPyramid &view);
+	void RenderImplNRCEnhanced(const ViewPyramid& view);
 	void FinalizeRenderNRC();
 	std::string GetPerfStats();
 
