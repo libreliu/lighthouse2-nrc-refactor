@@ -169,6 +169,7 @@ private:
 	std::string flexLogBuffer;
 
 	bool nrcTrainingEnable;
+	bool enableSelfTraining = false;
 	uint nrcNumInitialTrainingRays = 4096;
 	enum {
 		ORIGINAL,

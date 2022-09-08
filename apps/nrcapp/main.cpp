@@ -62,6 +62,7 @@ struct RenderTarget {
 
 std::string currentRT;
 bool nrcTrainingEnable = false;
+bool nrcSelfTraningEnable = false;
 bool auxRTEnabled;
 int nrcNumInitialTrainingRays = 1;
 enum nrcRenderModeSet {
@@ -334,6 +335,10 @@ void DrawUI() {
 		if (!success) {
 			trainVisLayer = 0;
 		}
+	}
+
+	if (ImGui::Checkbox("Self Training", &nrcSelfTraningEnable)) {
+		renderer->SettingStringExt("nrcSelfTrainingEnable", nrcSelfTraningEnable ? "true" : "false");
 	}
 
 	ImGui::Separator();

@@ -1359,6 +1359,13 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 			trainVisLayer = tvInput;
 			return true;
 		}
+	} else if (!strcmp(name, "nrcSelfTrainingEnable")) {
+		if (!strcmp(value, "true")) {
+			enableSelfTraining = true;
+		} else {
+			enableSelfTraining = false;
+		}
+		return true;
 	}
 	return false;
 }
@@ -2010,6 +2017,10 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 // 1. Self training w. realSampleFactor
 //    - Look up the net when finalize
 // 2. Path termination heuristics
+// 3. Training suffix (extend some of the rays while training)
+//    - postponed
+// 4. reflectance factorization
+// 5. area estimate
 void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 
 }
