@@ -2021,7 +2021,31 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 //    - postponed
 // 4. reflectance factorization
 // 5. area estimate
+//    - add "area" on each bounce segment
 void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
+	UpdateToplevel();
+	if (samplesTaken == 0) accumulator->Clear(ON_DEVICE);
+	trainTraceBuffer->Clear(ON_DEVICE);
+
+	// Prepare
+	RandomUInt( shiftSeed );
+	coreStats.totalExtensionRays = coreStats.totalShadowRays = 0;
+	float3 right = view.p2 - view.p1, up = view.p3 - view.p1;
+	params.posLensSize = make_float4( view.pos.x, view.pos.y, view.pos.z, view.aperture );
+	params.distortion = view.distortion;
+	params.shift = shiftSeed;
+	params.right = make_float3( right.x, right.y, right.z );
+	params.up = make_float3( up.x, up.y, up.z );
+	params.p1 = make_float3( view.p1.x, view.p1.y, view.p1.z );
+	params.pass = samplesTaken;
+	params.bvhRoot = bvhRoot;
+	params.trainTraces = trainTraceBuffer->DevPtr();
+	params.trainConnStates = trainConnStateBuffer->DevPtr();
+	params.infConnStates = infConnStateBuffer->DevPtr();
+
+	Counters counters;
+
+	uint trainRayCount = nrcNumInitialTrainingRays;
 
 }
 

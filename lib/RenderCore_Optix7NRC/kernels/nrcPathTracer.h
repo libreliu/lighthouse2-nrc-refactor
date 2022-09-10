@@ -638,6 +638,8 @@ __host__ void nrcContribAdd(
     );
 }
 
+#include "nrcEnhancedPathTracer.h"
+
 #undef S_SPECULAR
 #undef S_BOUNCED
 #undef S_VIASPECULAR
