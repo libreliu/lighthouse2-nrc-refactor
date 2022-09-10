@@ -170,6 +170,7 @@ private:
 
 	bool nrcTrainingEnable;
 	bool enableSelfTraining = false;
+	float pathTermC = 0.01;
 	uint nrcNumInitialTrainingRays = 4096;
 	enum {
 		ORIGINAL,

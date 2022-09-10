@@ -122,6 +122,24 @@ struct alignas(sizeof(float) * 4) TrainPathState
 
 using InferencePathState = TrainPathState;
 
+struct alignas(sizeof(float) * 5) TrainEnhancedPathState
+{
+	float3 O;
+	uint flags;
+	float3 D;
+	uint pathIdx;
+	float3 throughput;
+	uint pixelIdx;
+	float areaEstmSum;
+	float endingSum;
+	float2 dummy;
+	// float bsdfPdf;
+	// int N;
+	// float2 dummy;
+};
+
+using InferenceEnhancedPathState = TrainEnhancedPathState;
+
 struct alignas(sizeof(float) * 4) TrainConnectionState
 {
 	float3 O;
@@ -133,6 +151,7 @@ struct alignas(sizeof(float) * 4) TrainConnectionState
 };
 
 using InferenceConnState = TrainConnectionState;
+using InferenceEnhancedConnState = TrainConnectionState;
 
 struct alignas(sizeof(float) * 4) NRCNetInferenceInput
 {
