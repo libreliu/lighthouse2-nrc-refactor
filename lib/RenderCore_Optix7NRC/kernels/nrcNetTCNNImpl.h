@@ -301,8 +301,10 @@ void NRCTinyCudaNN::Reset(int mode) {
 
     CHK_CUDA(cudaDeviceSynchronize());
 
-    model->trainer->set_params_full_precision(paramsCPU.data(), numParams);
+    // model->trainer->set_params_full_precision(paramsCPU.data(), numParams);
+    model->trainer->initialize_params();
     
+
     // TODO: reset optimizer
     //model->optimizer->
 }

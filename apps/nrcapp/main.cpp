@@ -64,6 +64,7 @@ std::string currentRT;
 bool nrcTrainingEnable = false;
 bool nrcSelfTraningEnable = false;
 bool auxRTEnabled;
+float nrcPathTermC = 0;
 int nrcNumInitialTrainingRays = 1;
 enum nrcRenderModeSet {
 	ORIGINAL = 0,
@@ -314,8 +315,19 @@ void DrawUI() {
 		);
 	}
 
+	// Self training
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::Checkbox("Self Training", &nrcSelfTraningEnable)) {
+		renderer->SettingStringExt("nrcSelfTrainingEnable", nrcSelfTraningEnable ? "true" : "false");
+	}
+
+	// Path Termination Constant
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::DragFloat("pathTermC", &nrcPathTermC, 0.5f, 0.0f, 5.0f)) {
+		string pathTermCStr = std::to_string(nrcPathTermC);
+		renderer->SettingStringExt("nrcPathTermC", pathTermCStr.c_str());
+	}
+
 	// numInitialTrainingRays
-	if (ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::DragInt("numInitialRays", &nrcNumInitialTrainingRays, 10.0f, 1, scrwidth * scrheight)) {
 		// value changed, notify
 		if (nrcNumInitialTrainingRays < 1) {
 			nrcNumInitialTrainingRays = 1;
@@ -329,7 +341,7 @@ void DrawUI() {
 	}
 	
 	// TrainVisLayer
-	if (ImGui::SliderInt("TrainVisLayer", &trainVisLayer, 0, nrcMaxTrainPathLength - 1)) {
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::SliderInt("TrainVisLayer", &trainVisLayer, 0, nrcMaxTrainPathLength - 1)) {
 		std::string tvLayer = std::to_string(trainVisLayer);
 		bool success = renderer->SettingStringExt("trainVisLayer", tvLayer.c_str());
 		if (!success) {
@@ -337,9 +349,6 @@ void DrawUI() {
 		}
 	}
 
-	if (ImGui::Checkbox("Self Training", &nrcSelfTraningEnable)) {
-		renderer->SettingStringExt("nrcSelfTrainingEnable", nrcSelfTraningEnable ? "true" : "false");
-	}
 
 	ImGui::Separator();
 
@@ -463,6 +472,9 @@ void InitAuxRT() {
 
 	string maxTrainPathLen = renderer->GetSettingStringExt("nrcMaxTrainPathLength");
 	nrcMaxTrainPathLength = std::atoi(maxTrainPathLen.c_str());
+
+	string pathTermC = renderer->GetSettingStringExt("nrcPathTermC");
+	nrcPathTermC = std::atof(pathTermC.c_str());
 }
 
 //  +-----------------------------------------------------------------------------+

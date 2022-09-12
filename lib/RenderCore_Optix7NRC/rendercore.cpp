@@ -1432,6 +1432,9 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 			enableSelfTraining = false;
 		}
 		return true;
+	} else if (!strcmp(name, "nrcPathTermC")) {
+		pathTermC = std::atof(value);
+		return true;
 	}
 	return false;
 }
@@ -1516,6 +1519,8 @@ std::string RenderCore::GetSettingStringExt( const char* name ) {
 		return std::to_string(NRC_MAX_TRAIN_PATHLENGTH);
 	} else if (!strcmp(name, "perfStats")) {
 		return GetPerfStats();
+	} else if (!strcmp(name, "nrcPathTermC")) {
+		return std::to_string(pathTermC);
 	} else if (!strcmp(name, "cudaMemoryInfo")) {
 		size_t memFree, memTotal;
 		CHK_CUDA(cudaMemGetInfo(&memFree, &memTotal));
