@@ -505,6 +505,14 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 				maxPixels * scrspp,
 				ON_DEVICE
 			);
+
+			if (infEnhancedPathStateBuffer[i]) {
+				delete infEnhancedPathStateBuffer[i];
+			}
+			infEnhancedPathStateBuffer[i] = new CoreBuffer<InferenceEnhancedPathState>(
+				maxPixels * scrspp,
+				ON_DEVICE
+			);
 		}
 
 		{
@@ -513,6 +521,15 @@ void RenderCore::SetTarget( GLTexture* target, const uint spp )
 			}
 
 			infConnStateBuffer = new CoreBuffer<InferenceConnState>(
+				maxPixels * scrspp,
+				ON_DEVICE
+			);
+
+			if (infEnhancedConnStateBuffer) {
+				delete infEnhancedConnStateBuffer;
+			}
+
+			infEnhancedConnStateBuffer = new CoreBuffer<InferenceEnhancedConnState>(
 				maxPixels * scrspp,
 				ON_DEVICE
 			);
@@ -1110,7 +1127,8 @@ void RenderCore::Render( const ViewPyramid& view, const Convergence converge, bo
 		RenderImplNRCFull( view );
 		FinalizeRenderNRC();
 	} else if (renderMode == NRC_ENHANCED) {
-
+		RenderImplNRCEnhanced( view );
+		FinalizeRenderNRC();
 	}
 }
 void RenderCore::RenderImpl( const ViewPyramid& view, bool useShadeRef )
@@ -1320,6 +1338,17 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 					ON_DEVICE
 				);
 			}
+
+			if (trainEnhancedPathStateBuffer[i] == nullptr ||
+				trainEnhancedPathStateBuffer[i]->GetSize() < nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH) {
+				if (trainEnhancedPathStateBuffer[i]) {
+					delete trainEnhancedPathStateBuffer[i];
+				}
+				trainEnhancedPathStateBuffer[i] = new CoreBuffer<TrainEnhancedPathState>(
+					nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+					ON_DEVICE
+				);
+			}
 		}
 		
 
@@ -1329,6 +1358,17 @@ bool RenderCore::SettingStringExt( const char* name, const char* value ) {
 				delete trainConnStateBuffer;
 			}
 			trainConnStateBuffer = new CoreBuffer<TrainConnectionState>(
+				nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+				ON_DEVICE
+			);
+		}
+
+		if (trainEnhancedConnStateBuffer == nullptr ||
+			trainEnhancedConnStateBuffer->GetSize() < nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH) {
+			if (trainEnhancedConnStateBuffer) {
+				delete trainEnhancedConnStateBuffer;
+			}
+			trainEnhancedConnStateBuffer = new CoreBuffer<TrainEnhancedConnectionState>(
 				nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
 				ON_DEVICE
 			);
@@ -1405,7 +1445,7 @@ std::string RenderCore::GetPerfStats() {
 
 	ss << "updateBVH = " << NRC_TIME_ADD(CUDATools::Elapsed(updateBVHStart, updateBVHEnd)) * 1000 << " ms\n";
 
-	if (renderMode == NRC_FULL) {
+	if (renderMode == NRC_FULL || renderMode == NRC_ENHANCED) {
 		for (size_t i = 0; i < NRC_MAX_TRAIN_PATHLENGTH; i++) {
 			ss << "trainTrace[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(trainTraceStart[i], trainTraceEnd[i])) * 1000 << " ms\n";
 			ss << "trainShade[" << i << "] = " << NRC_TIME_ADD(CUDATools::Elapsed(trainShadeStart[i], trainShadeEnd[i])) * 1000 << " ms\n";
@@ -1521,9 +1561,18 @@ void RenderCore::InitNRC() {
 			nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
 			ON_DEVICE
 		);
+		trainEnhancedPathStateBuffer[i] = new CoreBuffer<TrainEnhancedPathState>(
+			nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+			ON_DEVICE
+		);
+		
 	}
 	
 	trainConnStateBuffer = new CoreBuffer<TrainConnectionState>(
+		nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
+		ON_DEVICE
+	);
+	trainEnhancedConnStateBuffer = new CoreBuffer<TrainEnhancedConnectionState>(
 		nrcNumInitialTrainingRays * NRC_MAX_TRAIN_PATHLENGTH,
 		ON_DEVICE
 	);
@@ -2067,7 +2116,7 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 	params.bvhRoot = bvhRoot;
 	params.trainTraces = trainTraceBuffer->DevPtr();
 	params.trainConnStates = trainConnStateBuffer->DevPtr();
-	params.infConnStates = infConnStateBuffer->DevPtr();
+	params.infEnhancedConnStates = infEnhancedConnStateBuffer->DevPtr();
 
 	Counters counters;
 
@@ -2075,18 +2124,18 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 	uint trainRayCount = nrcNumInitialTrainingRays;
 	for (uint tpLength = 0; tpLength < NRC_MAX_TRAIN_PATHLENGTH; tpLength++) {
 		// setup params array
-		params.trainPathStates = trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr();
+		params.trainEnhancedPathStates = trainEnhancedPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr();
 		params.pathLength = tpLength;
 		
 		if (nrcTrainingRaysSampler == UNIFORM) {
-			params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
+			params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM_ENHANCED;
 		} else if (nrcTrainingRaysSampler == HILTON) {
-			params.phase = Params::SPAWN_NRC_PRIMARY_HILTON;
+			params.phase = Params::SPAWN_NRC_PRIMARY_HILTON_ENHANCED;
 		}
 		cudaMemcpy((void*)nrcParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice);
-		params.phase = Params::SPAWN_NRC_SECONDARY;
+		params.phase = Params::SPAWN_NRC_SECONDARY_ENHANCED;
 		cudaMemcpy((void*)nrcParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice);
-		params.phase = Params::SPAWN_NRC_SHADOW;
+		params.phase = Params::SPAWN_NRC_SHADOW_ENHANCED;
 		cudaMemcpy((void*)nrcParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice);
 
 		// do trace
@@ -2104,13 +2153,13 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 		}
 		
 		CHK_CUDA(cudaEventRecord(trainShadeStart[tpLength]));
-		shadeTrain(
-			trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr(), trainRayCount,
-			trainPathStateBuffer[tpLength % 2 == 0 ? 1 : 0]->DevPtr(),
+		shadeTrainEnhanced(
+			trainEnhancedPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr(), trainRayCount,
+			trainEnhancedPathStateBuffer[tpLength % 2 == 0 ? 1 : 0]->DevPtr(),
 			hitBuffer->DevPtr(),
-			trainConnStateBuffer->DevPtr(), trainTraceBuffer->DevPtr(),
+			trainEnhancedConnStateBuffer->DevPtr(), trainTraceBuffer->DevPtr(),
 			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken, tpLength,
-			scrwidth, scrheight, view.spreadAngle
+			scrwidth, scrheight, view.spreadAngle, pathTermC
 		);
 		CHK_CUDA(cudaEventRecord(trainShadeEnd[tpLength]));
 
@@ -2191,12 +2240,12 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 		}
 
 		params.pathLength = pathLen;
-		params.infPathStates = infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr();
-		params.phase = Params::SPAWN_INF_PRIMARY;
+		params.infEnhancedPathStates = infEnhancedPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr();
+		params.phase = Params::SPAWN_INF_PRIMARY_ENHANCED;
 		cudaMemcpyAsync((void*)infParamsPrimary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
-		params.phase = Params::SPAWN_INF_SECONDARY;
+		params.phase = Params::SPAWN_INF_SECONDARY_ENHANCED;
 		cudaMemcpyAsync((void*)infParamsSecondary, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
-		params.phase = Params::SPAWN_INF_SHADOW;
+		params.phase = Params::SPAWN_INF_SHADOW_ENHANCED;
 		cudaMemcpyAsync((void*)infParamsShadow, &params, sizeof(Params), cudaMemcpyHostToDevice, 0);
 
 		CHK_CUDA(cudaEventRecord(traceStart[pathLen]));
@@ -2212,14 +2261,14 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 		CHK_CUDA(cudaEventRecord(traceEnd[pathLen]));
 		
 		CHK_CUDA(cudaEventRecord(shadeStart[pathLen]));
-		shadeNRC(
+		shadeNRCEnhanced(
 			accumulator->DevPtr(),
-			infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr(), pathCount,
-			infPathStateBuffer[pathLen % 2 == 0 ? 1 : 0]->DevPtr(),
+			infEnhancedPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr(), pathCount,
+			infEnhancedPathStateBuffer[pathLen % 2 == 0 ? 1 : 0]->DevPtr(),
 			hitBuffer->DevPtr(),
-			infConnStateBuffer->DevPtr(),
+			infEnhancedConnStateBuffer->DevPtr(),
 			RandomUInt(camRNGseed), shiftSeed, blueNoise->DevPtr(), samplesTaken,
-			pathLen, scrwidth, scrheight, view.spreadAngle,
+			pathLen, scrwidth, scrheight, view.spreadAngle, pathTermC,
 			numInferenceRays->DevPtr(),
 			infInputBuffer->DevPtr(),
 			infPixelIndices->DevPtr(),

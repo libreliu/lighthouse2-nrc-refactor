@@ -196,6 +196,13 @@ private:
 
 	CoreBuffer<InferencePathState>* infPathStateBuffer[2] = {nullptr, nullptr};
 	CoreBuffer<InferenceConnState>* infConnStateBuffer = nullptr;
+
+	// Enhanced
+	CoreBuffer<TrainEnhancedPathState>* trainEnhancedPathStateBuffer[2];
+	CoreBuffer<TrainEnhancedConnectionState>* trainEnhancedConnStateBuffer;
+	CoreBuffer<InferenceEnhancedPathState>* infEnhancedPathStateBuffer[2] = {nullptr, nullptr};
+	CoreBuffer<InferenceEnhancedConnState>* infEnhancedConnStateBuffer = nullptr;
+
 	CoreBuffer<NRCNetInferenceInput>* infInputBuffer = nullptr;
 	CoreBuffer<NRCNetInferenceOutput>* infOutputBuffer = nullptr;
 	CoreBuffer<uint>* infPixelIndices = nullptr;

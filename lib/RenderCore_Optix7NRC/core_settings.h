@@ -84,7 +84,8 @@ using namespace lh2core;
 #define NRC_TRACEFLAG_PATHLEN_TRUNCTUATE (1 << 4)
 #define NRC_TRACEFLAG_BSDF_TRUNCTUATE (1 << 5)
 #define NRC_TRACEFLAG_RR_TRUNCTUATE (1 << 6)
-#define NRC_TRACEFLAG_NEXT_BOUNCE (1 << 7)
+#define NRC_TRACEFLAG_AREA_TRUNCTUATE (1 << 7)
+#define NRC_TRACEFLAG_NEXT_BOUNCE (1 << 8)
 
 // NRC structures
 struct alignas(sizeof(float) * 4) NRCTraceBufComponent {
@@ -122,7 +123,7 @@ struct alignas(sizeof(float) * 4) TrainPathState
 
 using InferencePathState = TrainPathState;
 
-struct alignas(sizeof(float) * 5) TrainEnhancedPathState
+struct alignas(sizeof(float) * 4) TrainEnhancedPathState
 {
 	float3 O;
 	uint flags;
@@ -132,7 +133,8 @@ struct alignas(sizeof(float) * 5) TrainEnhancedPathState
 	uint pixelIdx;
 	float areaEstmSum;
 	float endingSum;
-	float2 dummy;
+	float bsdfpdf;   // previous bounce bsdfpdf
+	float dummy;
 	// float bsdfPdf;
 	// int N;
 	// float2 dummy;
@@ -150,6 +152,7 @@ struct alignas(sizeof(float) * 4) TrainConnectionState
 	int pixelIdx;
 };
 
+using TrainEnhancedConnectionState = TrainConnectionState;
 using InferenceConnState = TrainConnectionState;
 using InferenceEnhancedConnState = TrainConnectionState;
 
@@ -185,6 +188,8 @@ __global__ void nrc_check_align_cudacc(float* dummy) {
 
 	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
 	static_assert(sizeof(NRCNetInferenceOutput) == 3 * sizeof(float), "size unexpected");
+
+	static_assert(sizeof(TrainEnhancedPathState) == 4 * 4 * sizeof(float), "size unexpected");
 }
 
 #else
@@ -201,6 +206,8 @@ inline void nrc_check_align_hostcc(float* dummy) {
 	static_assert(sizeof(TrainPathState) == 3 * 4 * sizeof(float), "size unexpected");
 	static_assert(sizeof(NRCNetInferenceInput) == 4 * 4 * sizeof(float), "size unexpected");
 	static_assert(sizeof(NRCNetInferenceOutput) == 3 * sizeof(float), "size unexpected");
+
+	static_assert(sizeof(TrainEnhancedPathState) == 4 * 4 * sizeof(float), "size unexpected");
 }
 #endif
 
@@ -261,7 +268,14 @@ struct Params
 		SPAWN_NRC_SHADOW,
 		SPAWN_INF_PRIMARY,
 		SPAWN_INF_SECONDARY,
-		SPAWN_INF_SHADOW
+		SPAWN_INF_SHADOW,
+		SPAWN_NRC_PRIMARY_UNIFORM_ENHANCED,
+		SPAWN_NRC_PRIMARY_HILTON_ENHANCED,
+		SPAWN_NRC_SECONDARY_ENHANCED,
+		SPAWN_NRC_SHADOW_ENHANCED,
+		SPAWN_INF_PRIMARY_ENHANCED,
+		SPAWN_INF_SECONDARY_ENHANCED,
+		SPAWN_INF_SHADOW_ENHANCED
 	};
 	float4 posLensSize;
 	float3 right, up, p1;
@@ -279,8 +293,12 @@ struct Params
 	// -- NRC added --
 	TrainPathState* trainPathStates;
 	TrainConnectionState* trainConnStates;
+	TrainEnhancedPathState *trainEnhancedPathStates;
+	TrainEnhancedConnectionState *trainEnhancedConnStates;
 	InferencePathState* infPathStates;
+	InferenceEnhancedPathState* infEnhancedPathStates;
 	InferenceConnState* infConnStates;
+	InferenceEnhancedConnState* infEnhancedConnStates;
 	NRCTraceBuf* trainTraces;
 	uint pathLength;
 };

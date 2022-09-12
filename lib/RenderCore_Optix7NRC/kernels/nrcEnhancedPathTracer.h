@@ -183,6 +183,30 @@ __global__ void shadeTrainEnhancedKernel(
         return;
     }
 
+    
+    TrainEnhancedPathState nextTp;
+
+    // area estimation & trunctuation test
+    // Self training:
+    // - For unbiased rays tests, we need to disable such behavior
+    if (pathLength == 0) {
+        float dist = HIT_T;
+        float cos_i = dot(D, fN);
+        // pre-multiply C into endingSum, simplify judgment below
+        nextTp.endingSum = pathTermC * dist / (4 * PI * cos_i);
+        nextTp.areaEstmSum = 0;
+    } else {
+        float cos_i = dot(D, fN);
+        float areaEstm = HIT_T / (tpState.bsdfpdf * cos_i);
+        nextTp.areaEstmSum = tpState.areaEstmSum + sqrt(areaEstm);
+
+        if (nextTp.areaEstmSum > nextTp.endingSum) {
+            comp.traceFlags |= NRC_TRACEFLAG_AREA_TRUNCTUATE;
+            traceBuf[pathIdx].traceComponent[pathLength] = comp;
+            return;
+        }
+    }
+
     const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 );
 	if (!(flags & S_SPECULAR)) {
         flags |= flags & S_BOUNCED ? S_BOUNCEDTWICE : S_BOUNCED;
@@ -190,13 +214,13 @@ __global__ void shadeTrainEnhancedKernel(
         flags |= S_VIASPECULAR;
     }
 
-    TrainPathState nextTp;
     nextTp.O = SafeOrigin(I, R, N, geometryEpsilon);
     nextTp.flags = flags;
     nextTp.D = R;
     nextTp.pathIdx = pathIdx;
     nextTp.throughput = (1 / p) * bsdf * abs(dot(fN, R)) / newBsdfPdf;
     nextTp.pixelIdx = pixelIdx;
+    nextTp.bsdfpdf = newBsdfPdf;
 
     nextTrainPathStates[extensionRayIdx] = nextTp;
 
@@ -399,6 +423,41 @@ __global__ void shadeNRCEnhancedKernel(
         return;
     }
 
+    InferenceEnhancedPathState nextIp;
+
+    // area estimation & trunctuation test
+    // Self training:
+    // - For unbiased rays tests, we need to disable such behavior
+    if (pathLength == 0) {
+        float dist = HIT_T;
+        float cos_i = dot(D, fN);
+        // pre-multiply C into endingSum, simplify judgment below
+        nextIp.endingSum = pathTermC * dist / (4 * PI * cos_i);
+        nextIp.areaEstmSum = 0;
+    } else {
+        float cos_i = dot(D, fN);
+        float areaEstm = HIT_T / (ipState.bsdfpdf * cos_i);
+        nextIp.areaEstmSum = ipState.areaEstmSum + sqrt(areaEstm);
+
+        if (nextIp.areaEstmSum > nextIp.endingSum) {
+            const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);
+            NRCNetInferenceInput &iInput = inferenceInput[infIdx];
+            
+            iInput.rayIsect = I;
+            iInput.roughness = ROUGHNESS;
+            iInput.rayDir = toSphericalCoord(D);
+            iInput.normalDir = toSphericalCoord(fN);
+            iInput.diffuseRefl = shadingData.color;
+            iInput.specularRefl = shadingData.color;  // TODO: figure out
+            iInput.dummies[0] = iInput.dummies[1] = 0.0f;
+
+            inferencePixelIndices[infIdx] = pixelIdx;
+            inferencePixelContribs[infIdx] = throughput * bsdf * abs(dot(fN, R)) / newBsdfPdf;
+
+            return;
+        }
+    }
+
     const uint extensionRayIdx = atomicAdd( &counters->extensionRays, 1 );
 	if (!(flags & S_SPECULAR)) {
         flags |= flags & S_BOUNCED ? S_BOUNCEDTWICE : S_BOUNCED;
@@ -406,13 +465,13 @@ __global__ void shadeNRCEnhancedKernel(
         flags |= S_VIASPECULAR;
     }
 
-    InferencePathState nextIp;
     nextIp.O = SafeOrigin(I, R, N, geometryEpsilon);
     nextIp.flags = flags;
     nextIp.D = R;
     nextIp.pathIdx = pathIdx;
     nextIp.throughput = throughput * bsdf * abs(dot(fN, R)) / newBsdfPdf;
     nextIp.pixelIdx = pixelIdx;
+    nextIp.bsdfpdf = newBsdfPdf;
 
     nextPathStates[extensionRayIdx] = nextIp;
 }
