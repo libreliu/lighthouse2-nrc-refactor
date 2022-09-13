@@ -321,7 +321,7 @@ void DrawUI() {
 	}
 
 	// Path Termination Constant
-	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::DragFloat("pathTermC", &nrcPathTermC, 0.5f, 0.0f, 5.0f)) {
+	if (nrcRenderMode != ORIGINAL && nrcRenderMode != REFERENCE && ImGui::DragFloat("pathTermC", &nrcPathTermC, 0.1f, 0.0f, 10.0f)) {
 		string pathTermCStr = std::to_string(nrcPathTermC);
 		renderer->SettingStringExt("nrcPathTermC", pathTermCStr.c_str());
 	}
@@ -428,7 +428,7 @@ void DrawUI() {
 
 		if (enablePerfStats) {
 			std::string perfData = renderer->GetSettingStringExt("perfStats");
-			ImGui::Text("%s", perfData.c_str());
+			ImGui::TextUnformatted(perfData.data(), perfData.data() + perfData.length());
 		}
 		ImGui::End();
 	}

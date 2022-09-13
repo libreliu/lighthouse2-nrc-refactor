@@ -199,6 +199,7 @@ __global__ void shadeTrainEnhancedKernel(
         float cos_i = dot(D, fN);
         float areaEstm = HIT_T / (tpState.bsdfpdf * cos_i);
         nextTp.areaEstmSum = tpState.areaEstmSum + sqrt(areaEstm);
+        nextTp.endingSum = tpState.endingSum;
 
         if (nextTp.areaEstmSum > nextTp.endingSum) {
             comp.traceFlags |= NRC_TRACEFLAG_AREA_TRUNCTUATE;
@@ -438,6 +439,7 @@ __global__ void shadeNRCEnhancedKernel(
         float cos_i = dot(D, fN);
         float areaEstm = HIT_T / (ipState.bsdfpdf * cos_i);
         nextIp.areaEstmSum = ipState.areaEstmSum + sqrt(areaEstm);
+        nextIp.endingSum = ipState.endingSum;
 
         if (nextIp.areaEstmSum > nextIp.endingSum) {
             const uint infIdx = atomicAdd(numRaysToBeInferenced, 1);

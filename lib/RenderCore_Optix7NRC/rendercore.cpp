@@ -1498,7 +1498,7 @@ std::string RenderCore::GetPerfStats() {
 
 	ss << "\n";
 	ss << "lastErr: " << err << "\n";
-	ss << "FlexLog:" << flexLogBuffer;
+	ss << "FlexLog: \n" << flexLogBuffer;
 
 	return ss.str();
 }
@@ -1874,6 +1874,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		// setup params array
 		params.trainPathStates = trainPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr();
 		params.pathLength = tpLength;
+
+		flexLogBuffer += "trainRayCount[" + std::to_string(tpLength) + "]: " + std::to_string(trainRayCount) + "\n";
 		
 		if (nrcTrainingRaysSampler == UNIFORM) {
 			params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM;
@@ -1913,6 +1915,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
+
+		flexLogBuffer += "shadowRayCount[" + std::to_string(tpLength) + "]: " + std::to_string(counters.shadowRays) + "\n";
 
 		// trace shadow ray (TODO: performance improvement)
 		CHK_CUDA(cudaEventRecord(trainShadowStart[tpLength]));
@@ -1987,6 +1991,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 			InitCountersSubsequent();
 		}
 
+		flexLogBuffer += "pathCount[" + std::to_string(pathLen) + "]: " + std::to_string(pathCount) + "\n";
+
 		params.pathLength = pathLen;
 		params.infPathStates = infPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr();
 		params.phase = Params::SPAWN_INF_PRIMARY;
@@ -2028,6 +2034,8 @@ void RenderCore::RenderImplNRCFull(const ViewPyramid &view) {
 		counters = counterBuffer->HostPtr()[0];
 
 		pathCount = counters.extensionRays;
+
+		flexLogBuffer += "shadowRayCount[" + std::to_string(pathLen) + "]: " + std::to_string(counters.shadowRays) + "\n";
 
 		// trace shadow ray
 		CHK_CUDA(cudaEventRecord(infShadowStart[pathLen]));
@@ -2132,6 +2140,8 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 		params.trainEnhancedPathStates = trainEnhancedPathStateBuffer[tpLength % 2 == 0 ? 0 : 1]->DevPtr();
 		params.pathLength = tpLength;
 		
+		flexLogBuffer += "trainRayCount[" + std::to_string(tpLength) + "]: " + std::to_string(trainRayCount) + "\n";
+
 		if (nrcTrainingRaysSampler == UNIFORM) {
 			params.phase = Params::SPAWN_NRC_PRIMARY_UNIFORM_ENHANCED;
 		} else if (nrcTrainingRaysSampler == HILTON) {
@@ -2170,6 +2180,8 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 
 		counterBuffer->CopyToHost();
 		counters = counterBuffer->HostPtr()[0];
+
+		flexLogBuffer += "shadowRayCount[" + std::to_string(tpLength) + "]: " + std::to_string(counters.shadowRays) + "\n";
 
 		// trace shadow ray (TODO: performance improvement)
 		CHK_CUDA(cudaEventRecord(trainShadowStart[tpLength]));
@@ -2244,6 +2256,8 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 			InitCountersSubsequent();
 		}
 
+		flexLogBuffer += "pathCount[" + std::to_string(pathLen) + "]: " + std::to_string(pathCount) + "\n";
+
 		params.pathLength = pathLen;
 		params.infEnhancedPathStates = infEnhancedPathStateBuffer[pathLen % 2 == 0 ? 0 : 1]->DevPtr();
 		params.phase = Params::SPAWN_INF_PRIMARY_ENHANCED;
@@ -2285,6 +2299,8 @@ void RenderCore::RenderImplNRCEnhanced(const ViewPyramid &view) {
 		counters = counterBuffer->HostPtr()[0];
 
 		pathCount = counters.extensionRays;
+
+		flexLogBuffer += "shadowRayCount[" + std::to_string(pathLen) + "]: " + std::to_string(counters.shadowRays) + "\n";
 
 		// trace shadow ray
 		CHK_CUDA(cudaEventRecord(infShadowStart[pathLen]));
