@@ -64,6 +64,11 @@ public:
 	void FinalizeInstances();
 	void SetProbePos( const int2 pos );
 	CoreStats GetCoreStats() const override;
+
+	// Extension methods
+	// GetSettingStringExt: defaults to ""
+	std::string GetSettingStringExt( const char* name ) override;
+
 	// internal methods
 private:
 	void RenderImpl( const ViewPyramid& view );

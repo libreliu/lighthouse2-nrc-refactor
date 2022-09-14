@@ -761,6 +761,16 @@ void RenderCore::Setting( const char* name, const float value )
 	}
 }
 
+std::string RenderCore::GetSettingStringExt( const char* name ) {
+	if (!strcmp(name, "cudaMemoryInfo")) {
+		size_t memFree, memTotal;
+		CHK_CUDA(cudaMemGetInfo(&memFree, &memTotal));
+		return "VRAM: " + std::to_string(memFree / 1024.0 / 1024.0) + "MB Free / " + std::to_string(memTotal / 1024.0 / 1024.0) + "MB Total"; 
+	}
+
+	return "";
+}
+
 //  +-----------------------------------------------------------------------------+
 //  |  RenderCore::UpdateToplevel                                                 |
 //  |  After changing meshes, instances or instance transforms, we need to        |
