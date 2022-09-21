@@ -15,6 +15,7 @@
 
 #include "platform.h"
 #include "rendersystem.h"
+#include "stb_image_write.h"
 #include <bitset>
 #include <memory>
 #include <chrono>
@@ -102,8 +103,9 @@ static ScrollingBuffer lossBuf;
 static ScrollingBuffer processedRayBuf;
 
 #include "main_tools.h"
+#include <ctime>
 
-void setRenderMode() {
+std::string getNRCModeStr() {
 	std::string modeStr;
 	switch (nrcRenderMode) {
 		case ORIGINAL: modeStr = "ORIGINAL"; break;
@@ -112,6 +114,21 @@ void setRenderMode() {
 		case NRC_FULL: modeStr = "NRC_FULL"; break;
 		case NRC_ENHANCED: modeStr = "NRC_ENHANCED"; break;
 	}
+	return modeStr;
+}
+
+std::string getCurrentTimeStr()
+{
+    auto now = std::chrono::system_clock::now();
+	auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm* tm = std::localtime(&time);
+    char buffer[512];
+    std::strftime(buffer, sizeof(buffer), "%Y_%m_%d_%H_%M_%S", tm);
+    return std::string(buffer);
+}
+
+void setRenderMode() {
+	std::string modeStr = getNRCModeStr();
 	renderer->SettingStringExt("nrcRenderMode", modeStr.c_str());
 }
 
@@ -249,6 +266,30 @@ void DrawUI() {
 			}
 		}
 	}
+
+	// Button for saving
+	static std::string fbSaveLog;
+	if (ImGui::Button("Save framebuffer as PNG") && renderTarget != nullptr) {
+		
+		auto bitmap = lighthouse2::Bitmap(renderTarget->width, renderTarget->height);
+		renderTarget->CopyTo(&bitmap);
+
+		std::string fbFilename = getNRCModeStr() + "_" + getCurrentTimeStr() + ".png";
+		int ret = stbi_write_png(
+			fbFilename.c_str(),
+			renderTarget->width, renderTarget->height, 4,
+			(void*)bitmap.pixels, renderTarget->width * sizeof(uint)
+		);
+
+		if (!ret) {
+			fbSaveLog = "Failed to write " + fbFilename;
+		} else {
+			fbSaveLog = "Wrote framebuffer to " + fbFilename + 
+				" (" + std::to_string(renderTarget->width) + ", " + std::to_string(renderTarget->height) + ")";
+		}
+	}
+
+	ImGui::Text("Log: %s", fbSaveLog.c_str());
 
 	ImGui::Separator();
 
@@ -511,6 +552,8 @@ int main()
 	// enter main loop
 	while (!glfwWindowShouldClose( window ))
 	{
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 		if (renderControl == STOP) {
 			// no-op
 		} else {
@@ -542,35 +585,36 @@ int main()
 				renderer->SetNodeTransform( car, M );
 				if ((r += 0.025f * 0.3f) > 2 * PI) r -= 2 * PI;
 			}
-
-			// finalize and present
-			shader->Bind();
-			
-			if (currentRT == "result") {
-				shader->SetInputTexture( 0, "color", renderTarget );
-			} else {
-				bool rtFound = false;
-				for (auto &auxRT: auxRenderTargets) {
-					if (auxRT.rtName == currentRT) {
-						shader->SetInputTexture(0, "color", auxRT.texture.get());
-						rtFound = true;
-						break;
-					}
-				}
-				assert(rtFound);
-			}
-			shader->SetInputMatrix( "view", mat4::Identity() );
-			DrawQuad();
-			shader->Unbind();
 		}
 		
+		// finalize and present
+		shader->Bind();
+		
+		if (currentRT == "result") {
+			shader->SetInputTexture( 0, "color", renderTarget );
+		} else {
+			bool rtFound = false;
+			for (auto &auxRT: auxRenderTargets) {
+				if (auxRT.rtName == currentRT) {
+					shader->SetInputTexture(0, "color", auxRT.texture.get());
+					rtFound = true;
+					break;
+				}
+			}
+			assert(rtFound);
+		}
+		shader->SetInputMatrix( "view", mat4::Identity() );
+		DrawQuad();
+		shader->Unbind();
+
 		// shader
 		DrawUI();
 
 		// finalize
-		// Use single buffering instead of two, convenient for a rendering pause
-		// glfwSwapBuffers( window );
-		glFinish();
+		// DELETED: previously using single buffering instead of two, convenient for a rendering pause
+		// but hard to use things like RenderDoc
+		glfwSwapBuffers( window );
+		// glFinish();
 		
 		glfwPollEvents();
 		if (!running) break; // esc was pressed
